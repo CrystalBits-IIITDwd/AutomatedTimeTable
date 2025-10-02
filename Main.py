@@ -41,53 +41,47 @@ class TimetableApp:
         self.courses = {}   # courses[branch][sem][code] = [name, faculty, room, hours]
         self.timetable = {} # timetable[branch][sem] = {(day,slot):(course,faculty,room)}
 
+        # Track occupied rooms globally → (day,slot) : set(rooms)
+        self.occupied_rooms = {}
+
         self.setup_styles()
         self.setup_ui()
 
     def setup_styles(self):
         style = ttk.Style(self.root)
         style.theme_use("clam")
-
-        style.configure(
-            "Treeview",
-            background="#ffffff",
-            foreground="#333333",
-            rowheight=28,
-            fieldbackground="#f9f9f9",
-            font=("Segoe UI", 10)
-        )
-        style.configure(
-            "Treeview.Heading",
-            background="#4a90e2",
-            foreground="white",
-            font=("Segoe UI", 11, "bold")
-        )
+        style.configure("Treeview",
+                        background="#ffffff",
+                        foreground="#333333",
+                        rowheight=28,
+                        fieldbackground="#f9f9f9",
+                        font=("Segoe UI", 10))
+        style.configure("Treeview.Heading",
+                        background="#4a90e2",
+                        foreground="white",
+                        font=("Segoe UI", 11, "bold"))
         style.map("Treeview", background=[("selected", "#a8d0ff")])
 
     def styled_button(self, parent, text, command):
-        btn = tk.Label(
-            parent,
-            text=text,
-            font=("Segoe UI", 11, "bold"),
-            bg="#4a90e2",
-            fg="white",
-            padx=18,
-            pady=8,
-            cursor="hand2"
-        )
+        btn = tk.Label(parent,
+                       text=text,
+                       font=("Segoe UI", 11, "bold"),
+                       bg="#4a90e2",
+                       fg="white",
+                       padx=18,
+                       pady=8,
+                       cursor="hand2")
         btn.bind("<Button-1>", lambda e: command())
         btn.bind("<Enter>", lambda e: btn.config(bg="#357abd"))
         btn.bind("<Leave>", lambda e: btn.config(bg="#4a90e2"))
         return btn
 
     def setup_ui(self):
-        title = tk.Label(
-            self.root,
-            text="📅 Timetable Scheduler",
-            font=("Segoe UI", 18, "bold"),
-            bg="#f2f6ff",
-            fg="#333"
-        )
+        title = tk.Label(self.root,
+                        text="📅 Timetable Scheduler",
+                        font=("Segoe UI", 18, "bold"),
+                        bg="#f2f6ff",
+                        fg="#333")
         title.pack(pady=15)
 
         # Form section
@@ -96,16 +90,12 @@ class TimetableApp:
 
         labels = ["Course Code", "Course Name", "Faculty", "Room", "Hours/Week"]
         self.entries = {}
-
         for i, lbl in enumerate(labels):
-            tk.Label(
-                form_frame,
-                text=lbl,
-                font=("Segoe UI", 10, "bold"),
-                bg="#f2f6ff",
-                fg="#444"
-            ).grid(row=i, column=0, sticky="e", padx=5, pady=2)
-
+            tk.Label(form_frame,
+                     text=lbl,
+                     font=("Segoe UI", 10, "bold"),
+                     bg="#f2f6ff",
+                     fg="#444").grid(row=i, column=0, sticky="e", padx=5, pady=2)
             entry = tk.Entry(form_frame, font=("Segoe UI", 10), width=25, relief="solid", bd=1)
             entry.grid(row=i, column=1, pady=2)
             self.entries[lbl] = entry
@@ -128,15 +118,12 @@ class TimetableApp:
         sem_cb.grid(row=len(labels)+1, column=1, pady=2)
         sem_cb.current(0)
 
-        # Add course button
         self.styled_button(self.root, "➕ Add Course", self.add_course).pack(pady=12)
 
         # Treeview
-        self.tree = ttk.Treeview(
-            self.root,
-            columns=("Day", "Slot", "Course", "Faculty", "Room"),
-            show="headings"
-        )
+        self.tree = ttk.Treeview(self.root,
+                                 columns=("Day", "Slot", "Course", "Faculty", "Room"),
+                                 show="headings")
         for col in ("Day", "Slot", "Course", "Faculty", "Room"):
             self.tree.heading(col, text=col)
             self.tree.column(col, width=140, anchor="center")
@@ -146,12 +133,14 @@ class TimetableApp:
         select_frame = tk.Frame(self.root, bg="#f2f6ff")
         select_frame.pack(pady=8)
 
-        tk.Label(select_frame, text="View Branch:", bg="#f2f6ff", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, padx=5)
+        tk.Label(select_frame, text="View Branch:", bg="#f2f6ff",
+                 font=("Segoe UI", 10, "bold")).grid(row=0, column=0, padx=5)
         self.display_branch = tk.StringVar()
         ttk.Combobox(select_frame, textvariable=self.display_branch,
-                     values=["CSE","DSAI","ECE"], state="readonly", width=10).grid(row=0, column=1, padx=5)
+                     values=["CSE", "DSAI", "ECE"], state="readonly", width=10).grid(row=0, column=1, padx=5)
 
-        tk.Label(select_frame, text="Semester:", bg="#f2f6ff", font=("Segoe UI", 10, "bold")).grid(row=0, column=2, padx=5)
+        tk.Label(select_frame, text="Semester:", bg="#f2f6ff",
+                 font=("Segoe UI", 10, "bold")).grid(row=0, column=2, padx=5)
         self.display_sem = tk.StringVar()
         ttk.Combobox(select_frame, textvariable=self.display_sem,
                      values=[str(i) for i in range(1,9)], state="readonly", width=5).grid(row=0, column=3, padx=5)
@@ -161,10 +150,8 @@ class TimetableApp:
         # Bottom buttons
         btn_frame = tk.Frame(self.root, bg="#f2f6ff")
         btn_frame.pack(pady=15)
-
         self.styled_button(btn_frame, "⚡ Generate All Timetables", self.generate_timetable).grid(row=0, column=0, padx=12)
         self.styled_button(btn_frame, "📤 Export CSVs", self.export_csv).grid(row=0, column=1, padx=12)
-
 
     def add_course(self):
         try:
@@ -193,15 +180,16 @@ class TimetableApp:
         except Exception as e:
             messagebox.showerror("Error", f"❌ Invalid input: {e}")
 
-
     def generate_timetable(self):
         self.timetable.clear()
+        self.occupied_rooms.clear()
+        unscheduled = []  # track courses that couldn’t be fully scheduled
 
         for branch, sems in self.courses.items():
             for sem, courses in sems.items():
                 all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
                 random.shuffle(all_slots)
-                remaining = {code: data[3] for code, data in courses.items()}
+                remaining = {code: data[3] for code, data in courses.items()}  # hours left
                 used_today = {day: set() for day in DAYS}
                 timetable_branch_sem = {}
 
@@ -209,29 +197,50 @@ class TimetableApp:
                     for code in list(courses.keys()):
                         if remaining[code] <= 0:
                             continue
-                        day, slot = random.choice(all_slots)
-                        if code in used_today[day]:
-                            continue
 
-                        start, end = slot.split("-")
-                        s_h, s_m = map(int, start.split(":"))
-                        e_h, e_m = map(int, end.split(":"))
-                        actual_length = (e_h * 60 + e_m - (s_h * 60 + s_m)) / 60
+                        success = False
+                        for _ in range(100):  # retry up to 100 times
+                            if not all_slots:
+                                break
+                            day, slot = random.choice(all_slots)
+                            room = courses[code][2]
 
-                        duration = 1.5 if random.random() < 0.7 else 1.0
+                            # Prevent same course twice in a day
+                            if code in used_today[day]:
+                                continue
 
-                        if abs(actual_length - duration) < 0.6 and (day, slot) not in timetable_branch_sem:
+                            # Prevent room collision globally
+                            if (day, slot) in self.occupied_rooms and room in self.occupied_rooms[(day, slot)]:
+                                continue
+
+                            # ✅ Safe slot found → assign
                             name, faculty, room, _ = courses[code]
                             timetable_branch_sem[(day, slot)] = (name, faculty, room)
-                            remaining[code] -= duration
+                            remaining[code] -= 1.0
                             used_today[day].add(code)
+
+                            if (day, slot) not in self.occupied_rooms:
+                                self.occupied_rooms[(day, slot)] = set()
+                            self.occupied_rooms[(day, slot)].add(room)
+
                             all_slots.remove((day, slot))
+                            success = True
+                            break  # break retry loop once scheduled
+
+                        if not success:
+                            unscheduled.append((branch, sem, courses[code][0]))
 
                 if branch not in self.timetable:
                     self.timetable[branch] = {}
                 self.timetable[branch][sem] = timetable_branch_sem
 
-        messagebox.showinfo("Done", "✅ All timetables generated!")
+        if unscheduled:
+            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in unscheduled])
+            messagebox.showwarning("Unscheduled Courses",
+                                f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
+        else:
+            messagebox.showinfo("Done", "✅ All timetables generated (no room collisions)!")
+
 
 
     def show_timetable(self):
@@ -249,7 +258,6 @@ class TimetableApp:
                 self.tree.insert("", "end", values=(day, slot, course, faculty, room))
         else:
             messagebox.showwarning("Not Found", "⚠ No timetable found for this Branch & Semester")
-
 
     def export_csv(self):
         for branch, sems in self.timetable.items():
