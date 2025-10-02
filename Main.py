@@ -29,15 +29,17 @@ def generate_slots():
 
 SLOTS = generate_slots()
 
+
 class TimetableApp:
     def __init__(self, root):
         self.root = root
         self.root.title("🎓 Automated Timetable Scheduler")
-        self.root.geometry("850x650")
+        self.root.geometry("950x700")
         self.root.configure(bg="#f2f6ff")
 
-        self.courses = {}
-        self.timetable = {}
+        # Data stores
+        self.courses = {}   # courses[branch][sem][code] = [name, faculty, room, hours]
+        self.timetable = {} # timetable[branch][sem] = {(day,slot):(course,faculty,room)}
 
         self.setup_styles()
         self.setup_ui()
@@ -46,7 +48,6 @@ class TimetableApp:
         style = ttk.Style(self.root)
         style.theme_use("clam")
 
-        # Treeview styling
         style.configure(
             "Treeview",
             background="#ffffff",
@@ -64,7 +65,6 @@ class TimetableApp:
         style.map("Treeview", background=[("selected", "#a8d0ff")])
 
     def styled_button(self, parent, text, command):
-        """Helper to create modern buttons with hover effects"""
         btn = tk.Label(
             parent,
             text=text,
@@ -90,11 +90,13 @@ class TimetableApp:
         )
         title.pack(pady=15)
 
+        # Form section
         form_frame = tk.Frame(self.root, bg="#f2f6ff")
         form_frame.pack(pady=5)
 
         labels = ["Course Code", "Course Name", "Faculty", "Room", "Hours/Week"]
         self.entries = {}
+
         for i, lbl in enumerate(labels):
             tk.Label(
                 form_frame,
@@ -108,10 +110,28 @@ class TimetableApp:
             entry.grid(row=i, column=1, pady=2)
             self.entries[lbl] = entry
 
+        # Branch dropdown
+        tk.Label(form_frame, text="Branch", font=("Segoe UI", 10, "bold"),
+                 bg="#f2f6ff", fg="#444").grid(row=len(labels), column=0, sticky="e", padx=5, pady=2)
+        self.branch_var = tk.StringVar()
+        branch_cb = ttk.Combobox(form_frame, textvariable=self.branch_var,
+                                 values=["CSE", "DSAI", "ECE"], state="readonly", width=22)
+        branch_cb.grid(row=len(labels), column=1, pady=2)
+        branch_cb.current(0)
+
+        # Semester dropdown
+        tk.Label(form_frame, text="Semester", font=("Segoe UI", 10, "bold"),
+                 bg="#f2f6ff", fg="#444").grid(row=len(labels)+1, column=0, sticky="e", padx=5, pady=2)
+        self.sem_var = tk.StringVar()
+        sem_cb = ttk.Combobox(form_frame, textvariable=self.sem_var,
+                              values=[str(i) for i in range(1, 9)], state="readonly", width=22)
+        sem_cb.grid(row=len(labels)+1, column=1, pady=2)
+        sem_cb.current(0)
+
         # Add course button
         self.styled_button(self.root, "➕ Add Course", self.add_course).pack(pady=12)
 
-        # Timetable view
+        # Treeview
         self.tree = ttk.Treeview(
             self.root,
             columns=("Day", "Slot", "Course", "Faculty", "Room"),
@@ -122,12 +142,29 @@ class TimetableApp:
             self.tree.column(col, width=140, anchor="center")
         self.tree.pack(pady=10, fill="both", expand=True)
 
+        # Dropdowns for display
+        select_frame = tk.Frame(self.root, bg="#f2f6ff")
+        select_frame.pack(pady=8)
+
+        tk.Label(select_frame, text="View Branch:", bg="#f2f6ff", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, padx=5)
+        self.display_branch = tk.StringVar()
+        ttk.Combobox(select_frame, textvariable=self.display_branch,
+                     values=["CSE","DSAI","ECE"], state="readonly", width=10).grid(row=0, column=1, padx=5)
+
+        tk.Label(select_frame, text="Semester:", bg="#f2f6ff", font=("Segoe UI", 10, "bold")).grid(row=0, column=2, padx=5)
+        self.display_sem = tk.StringVar()
+        ttk.Combobox(select_frame, textvariable=self.display_sem,
+                     values=[str(i) for i in range(1,9)], state="readonly", width=5).grid(row=0, column=3, padx=5)
+
+        self.styled_button(select_frame, "📖 Show Timetable", self.show_timetable).grid(row=0, column=4, padx=12)
+
         # Bottom buttons
         btn_frame = tk.Frame(self.root, bg="#f2f6ff")
         btn_frame.pack(pady=15)
 
-        self.styled_button(btn_frame, "⚡ Generate Timetable", self.generate_timetable).grid(row=0, column=0, padx=12)
-        self.styled_button(btn_frame, "📤 Export CSV", self.export_csv).grid(row=0, column=1, padx=12)
+        self.styled_button(btn_frame, "⚡ Generate All Timetables", self.generate_timetable).grid(row=0, column=0, padx=12)
+        self.styled_button(btn_frame, "📤 Export CSVs", self.export_csv).grid(row=0, column=1, padx=12)
+
 
     def add_course(self):
         try:
@@ -136,66 +173,94 @@ class TimetableApp:
             faculty = self.entries["Faculty"].get().strip()
             room = self.entries["Room"].get().strip()
             hours = int(self.entries["Hours/Week"].get().strip())
+            branch = self.branch_var.get()
+            sem = self.sem_var.get()
 
             if not code or not name or not faculty or not room:
                 raise ValueError("Empty fields")
 
-            self.courses[code] = [name, faculty, room, hours]
-            messagebox.showinfo("Success", f"✅ Course {name} ({hours} hrs/week) added")
+            if branch not in self.courses:
+                self.courses[branch] = {}
+            if sem not in self.courses[branch]:
+                self.courses[branch][sem] = {}
+
+            self.courses[branch][sem][code] = [name, faculty, room, hours]
+            messagebox.showinfo("Success", f"✅ Added {name} ({hours} hrs/week) for {branch} Sem-{sem}")
 
             for e in self.entries.values():
                 e.delete(0, tk.END)
+
         except Exception as e:
             messagebox.showerror("Error", f"❌ Invalid input: {e}")
 
+
     def generate_timetable(self):
-        self.tree.delete(*self.tree.get_children())
         self.timetable.clear()
 
-        all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
-        random.shuffle(all_slots)
+        for branch, sems in self.courses.items():
+            for sem, courses in sems.items():
+                all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
+                random.shuffle(all_slots)
+                remaining = {code: data[3] for code, data in courses.items()}
+                used_today = {day: set() for day in DAYS}
+                timetable_branch_sem = {}
 
-        remaining = {code: data[3] for code, data in self.courses.items()}
-        used_today = {day: set() for day in DAYS}
+                while any(hrs > 0 for hrs in remaining.values()) and all_slots:
+                    for code in list(courses.keys()):
+                        if remaining[code] <= 0:
+                            continue
+                        day, slot = random.choice(all_slots)
+                        if code in used_today[day]:
+                            continue
 
-        while any(hrs > 0 for hrs in remaining.values()) and all_slots:
-            for code in list(self.courses.keys()):
-                if remaining[code] <= 0:
-                    continue
+                        start, end = slot.split("-")
+                        s_h, s_m = map(int, start.split(":"))
+                        e_h, e_m = map(int, end.split(":"))
+                        actual_length = (e_h * 60 + e_m - (s_h * 60 + s_m)) / 60
 
-                day, slot = random.choice(all_slots)
+                        duration = 1.5 if random.random() < 0.7 else 1.0
 
-                if code in used_today[day]:
-                    continue
+                        if abs(actual_length - duration) < 0.6 and (day, slot) not in timetable_branch_sem:
+                            name, faculty, room, _ = courses[code]
+                            timetable_branch_sem[(day, slot)] = (name, faculty, room)
+                            remaining[code] -= duration
+                            used_today[day].add(code)
+                            all_slots.remove((day, slot))
 
-                start, end = slot.split("-")
-                s_h, s_m = map(int, start.split(":"))
-                e_h, e_m = map(int, end.split(":"))
-                actual_length = (e_h * 60 + e_m - (s_h * 60 + s_m)) / 60
+                if branch not in self.timetable:
+                    self.timetable[branch] = {}
+                self.timetable[branch][sem] = timetable_branch_sem
 
-                duration = 1.5 if random.random() < 0.7 else 1.0
+        messagebox.showinfo("Done", "✅ All timetables generated!")
 
-                if abs(actual_length - duration) < 0.6 and (day, slot) not in self.timetable:
-                    name, faculty, room, _ = self.courses[code]
-                    self.timetable[(day, slot)] = (name, faculty, room)
-                    remaining[code] -= duration
-                    used_today[day].add(code)
-                    all_slots.remove((day, slot))
 
-        def sort_key(item):
-            (day, slot) = item[0]
-            sh, sm = map(int, slot.split("-")[0].split(":"))
-            return (DAYS.index(day), sh, sm)
+    def show_timetable(self):
+        self.tree.delete(*self.tree.get_children())
+        branch = self.display_branch.get()
+        sem = self.display_sem.get()
 
-        for (day, slot), (course, faculty, room) in sorted(self.timetable.items(), key=sort_key):
-            self.tree.insert("", "end", values=(day, slot, course, faculty, room))
+        if branch in self.timetable and sem in self.timetable[branch]:
+            def sort_key(item):
+                (day, slot) = item[0]
+                sh, sm = map(int, slot.split("-")[0].split(":"))
+                return (DAYS.index(day), sh, sm)
+
+            for (day, slot), (course, faculty, room) in sorted(self.timetable[branch][sem].items(), key=sort_key):
+                self.tree.insert("", "end", values=(day, slot, course, faculty, room))
+        else:
+            messagebox.showwarning("Not Found", "⚠ No timetable found for this Branch & Semester")
+
 
     def export_csv(self):
-        with open("weekly_timetable.csv", "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Day", "Slot", "Course", "Faculty", "Room"])
-            for (day, slot), (course, faculty, room) in self.timetable.items():
-                writer.writerow([day, slot, course, faculty, room])
+        for branch, sems in self.timetable.items():
+            for sem, table in sems.items():
+                fname = f"timetable_{branch}_Sem{sem}.csv"
+                with open(fname, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Day", "Slot", "Course", "Faculty", "Room"])
+                    for (day, slot), (course, faculty, room) in table.items():
+                        writer.writerow([day, slot, course, faculty, room])
+        messagebox.showinfo("Exported", "📤 All timetables exported as CSV files!")
 
 
 if __name__ == "__main__":
