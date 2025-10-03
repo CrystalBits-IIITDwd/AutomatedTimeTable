@@ -1,0 +1,28 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CSV exports (your exported timetables)
+timetable_*.csv
+
+# IDE / editor configs
+.vscode/
+.idea/
+
+# Log files
+*.log
