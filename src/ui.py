@@ -151,8 +151,16 @@ class TimetableApp:
         except Exception as e:
             messagebox.showerror("Error", f"❌ Invalid input: {e}")
 
+    # inside TimetableApp class
+
     def generate_all(self):
-        self.timetable = generate_timetable(self.courses)
+        scheduler = TimetableScheduler(self.courses)
+        self.timetable, unscheduled = scheduler.generate_timetable()
+        if unscheduled:
+            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in unscheduled])
+            messagebox.showwarning("Unscheduled Courses",
+                                f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
+
 
     def show_timetable(self):
         self.tree.delete(*self.tree.get_children())

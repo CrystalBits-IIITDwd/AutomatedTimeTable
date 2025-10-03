@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-# Generate slots (9:00 to 17:00), skip lunch 13:15–14:30
 def generate_slots():
     start = datetime.strptime("09:00", "%H:%M")
     end = datetime.strptime("17:00", "%H:%M")
@@ -17,7 +16,6 @@ def generate_slots():
 
         if not (start < lunch_end and one_hour > lunch_start):
             slots.append((start.strftime("%H:%M"), one_hour.strftime("%H:%M")))
-
         if not (start < lunch_end and ninety_min > lunch_start):
             slots.append((start.strftime("%H:%M"), ninety_min.strftime("%H:%M")))
 

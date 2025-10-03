@@ -2,61 +2,65 @@ import random
 from tkinter import messagebox
 from .utils import DAYS, SLOTS
 
-def TimetableScheduler(courses):
-    timetable = {}
-    occupied_rooms = {}
-    unscheduled = []
+class TimetableScheduler:
+    def __init__(self, courses):
+        self.courses = courses  # original courses dict
+        self.timetable = {}     # branch -> sem -> (day, slot) -> (course, faculty, room)
+        self.occupied_rooms = {} # (day, slot) -> set of rooms
+        self.unscheduled = []    # list of (branch, sem, course_name)
 
-    for branch, sems in courses.items():
-        for sem, courses in sems.items():
-            all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
-            random.shuffle(all_slots)
-            remaining = {code: data[3] for code, data in courses.items()}
-            used_today = {day: set() for day in DAYS}
-            timetable_branch_sem = {}
+    def generate_timetable(self):
+        for branch, sems in self.courses.items():
+            for sem, sem_courses in sems.items():
+                all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
+                random.shuffle(all_slots)
 
-            while any(hrs > 0 for hrs in remaining.values()) and all_slots:
-                for code in list(courses.keys()):
-                    if remaining[code] <= 0:
-                        continue
-                    success = False
-                    for _ in range(100):  # retry attempts
-                        if not all_slots:
+                remaining = {code: data[3] for code, data in sem_courses.items()}
+                used_today = {day: set() for day in DAYS}
+                timetable_branch_sem = {}
+
+                while any(hrs > 0 for hrs in remaining.values()) and all_slots:
+                    for code in list(sem_courses.keys()):
+                        if remaining[code] <= 0:
+                            continue
+                        success = False
+                        for _ in range(100):
+                            if not all_slots:
+                                break
+                            day, slot = random.choice(all_slots)
+                            room = sem_courses[code][2]
+
+                            # same course cannot appear twice in a day
+                            if code in used_today[day]:
+                                continue
+                            # room already occupied
+                            if (day, slot) in self.occupied_rooms and room in self.occupied_rooms[(day, slot)]:
+                                continue
+
+                            name, faculty, room, _ = sem_courses[code]
+                            timetable_branch_sem[(day, slot)] = (name, faculty, room)
+                            remaining[code] -= 1.0
+                            used_today[day].add(code)
+
+                            if (day, slot) not in self.occupied_rooms:
+                                self.occupied_rooms[(day, slot)] = set()
+                            self.occupied_rooms[(day, slot)].add(room)
+
+                            all_slots.remove((day, slot))
+                            success = True
                             break
-                        day, slot = random.choice(all_slots)
-                        room = courses[code][2]
+                        if not success:
+                            self.unscheduled.append((branch, sem, sem_courses[code][0]))
 
-                        # no same course twice in same day
-                        if code in used_today[day]:
-                            continue
-                        # room already occupied
-                        if (day, slot) in occupied_rooms and room in occupied_rooms[(day, slot)]:
-                            continue
+                if branch not in self.timetable:
+                    self.timetable[branch] = {}
+                self.timetable[branch][sem] = timetable_branch_sem
 
-                        name, faculty, room, _ = courses[code]
-                        timetable_branch_sem[(day, slot)] = (name, faculty, room)
-                        remaining[code] -= 1.0
-                        used_today[day].add(code)
+        if self.unscheduled:
+            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in self.unscheduled])
+            messagebox.showwarning("Unscheduled Courses",
+                                   f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
+        else:
+            messagebox.showinfo("Done", "✅ All timetables generated (no room collisions)!")
 
-                        if (day, slot) not in occupied_rooms:
-                            occupied_rooms[(day, slot)] = set()
-                        occupied_rooms[(day, slot)].add(room)
-
-                        all_slots.remove((day, slot))
-                        success = True
-                        break
-                    if not success:
-                        unscheduled.append((branch, sem, courses[code][0]))
-
-            if branch not in timetable:
-                timetable[branch] = {}
-            timetable[branch][sem] = timetable_branch_sem
-
-    if unscheduled:
-        warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in unscheduled])
-        messagebox.showwarning("Unscheduled Courses",
-                               f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
-    else:
-        messagebox.showinfo("Done", "✅ All timetables generated (no room collisions)!")
-
-    return timetable
+        return self.timetable, self.unscheduled
