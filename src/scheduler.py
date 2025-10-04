@@ -5,11 +5,13 @@ from .utils import DAYS, SLOTS
 class TimetableScheduler:
     def __init__(self, courses=None):
         self.courses = courses or {}
-        self.timetable = {}
-        self.occupied_rooms = {}
+        self.timetable = {}       # branch(str) -> sem(str) -> (day, slot) -> (course, faculty, room)
+        self.occupied_rooms = {}  # (day, slot) -> set of rooms
         self.unscheduled = []
 
     def add_course(self, branch, sem, code, name, faculty, room, hours):
+        branch = str(branch)
+        sem = str(sem)
         if branch not in self.courses:
             self.courses[branch] = {}
         if sem not in self.courses[branch]:
@@ -17,8 +19,14 @@ class TimetableScheduler:
         self.courses[branch][sem][code] = [name, faculty, room, hours]
 
     def generate_timetable(self):
+        self.timetable.clear()
+        self.occupied_rooms.clear()
+        self.unscheduled.clear()
+
         for branch, sems in self.courses.items():
+            branch = str(branch)
             for sem, sem_courses in sems.items():
+                sem = str(sem)
                 all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
                 random.shuffle(all_slots)
 

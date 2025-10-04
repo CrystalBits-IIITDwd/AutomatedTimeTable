@@ -19,7 +19,6 @@ class TimetableApp:
     def setup_styles(self):
         style = ttk.Style(self.root)
         style.theme_use("clam")
-
         style.configure("Treeview",
                         background="#ffffff",
                         foreground="#333333",
@@ -131,8 +130,8 @@ class TimetableApp:
             faculty = self.entries["Faculty"].get().strip()
             room = self.entries["Room"].get().strip()
             hours = int(self.entries["Hours/Week"].get().strip())
-            branch = self.branch_var.get()
-            sem = self.sem_var.get()
+            branch = str(self.branch_var.get())
+            sem = str(self.sem_var.get())
 
             if not code or not name or not faculty or not room:
                 raise ValueError("Empty fields")
@@ -151,21 +150,15 @@ class TimetableApp:
         except Exception as e:
             messagebox.showerror("Error", f"❌ Invalid input: {e}")
 
-    # inside TimetableApp class
-
     def generate_all(self):
         scheduler = TimetableScheduler(self.courses)
         self.timetable, unscheduled = scheduler.generate_timetable()
-        if unscheduled:
-            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in unscheduled])
-            messagebox.showwarning("Unscheduled Courses",
-                                f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
-
 
     def show_timetable(self):
         self.tree.delete(*self.tree.get_children())
-        branch = self.display_branch.get()
-        sem = self.display_sem.get()
+        branch = str(self.display_branch.get())
+        sem = str(self.display_sem.get())
+
         if branch in self.timetable and sem in self.timetable[branch]:
             def sort_key(item):
                 (day, slot) = item[0]
