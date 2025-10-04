@@ -3,11 +3,18 @@ from tkinter import messagebox
 from .utils import DAYS, SLOTS
 
 class TimetableScheduler:
-    def __init__(self, courses):
-        self.courses = courses  # original courses dict
-        self.timetable = {}     # branch -> sem -> (day, slot) -> (course, faculty, room)
-        self.occupied_rooms = {} # (day, slot) -> set of rooms
-        self.unscheduled = []    # list of (branch, sem, course_name)
+    def __init__(self, courses=None):
+        self.courses = courses or {}
+        self.timetable = {}
+        self.occupied_rooms = {}
+        self.unscheduled = []
+
+    def add_course(self, branch, sem, code, name, faculty, room, hours):
+        if branch not in self.courses:
+            self.courses[branch] = {}
+        if sem not in self.courses[branch]:
+            self.courses[branch][sem] = {}
+        self.courses[branch][sem][code] = [name, faculty, room, hours]
 
     def generate_timetable(self):
         for branch, sems in self.courses.items():
