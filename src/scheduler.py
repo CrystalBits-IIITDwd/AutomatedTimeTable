@@ -1,8 +1,10 @@
+# src/scheduler.py
 import random
 import math
 from tkinter import messagebox
-from .utils import DAYS, SLOTS
+from .utils import DAYS, LECTURE_SLOTS, TUTORIAL_SLOTS, LAB_SLOTS
 
+# --- helpers to work with time intervals ---
 def _parse_slot_to_minutes(slot):
     """
     slot: "HH:MM-HH:MM" -> (start_minutes, end_minutes)
@@ -13,131 +15,197 @@ def _parse_slot_to_minutes(slot):
     return sh * 60 + sm, eh * 60 + em
 
 def _intervals_overlap(a_start, a_end, b_start, b_end):
+    """
+    True if intervals [a_start,a_end) and [b_start,b_end) overlap
+    """
     return not (a_end <= b_start or b_end <= a_start)
 
 class TimetableScheduler:
-    SLOT_DURATION = 1.5  # hours per slot (matching the fixed slots list)
+    """
+    Scheduler that:
+      - uses typed slot pools (lecture/tutorial/lab),
+      - enforces no room overlap (checked by real intervals),
+      - enforces no student overlap for same branch+semester (real intervals),
+      - converts hours-per-week into number-of-slots using per-type slot durations.
+    """
+
+    # durations in hours for each type of slot
+    TYPE_DURATION = {
+        "Lecture": 1.5,
+        "Tutorial": 1.0,
+        "Lab": 2.0
+    }
+
+    TYPE_POOLS = {
+        "Lecture": LECTURE_SLOTS,
+        "Tutorial": TUTORIAL_SLOTS,
+        "Lab": LAB_SLOTS
+    }
 
     def __init__(self, courses=None):
-        # courses: dict[branch][sem][code] = [name, faculty, room, hours]
+        # courses[branch][sem][code] = {
+        #   name, faculty, room, lecture_hours, tutorial_hours, lab_hours
+        # }
         self.courses = courses or {}
-        self.timetable = {}       # branch -> sem -> {(day,slot): (course,faculty,room)}
-        # occupied_rooms: key = (room, day) -> list of (start_min, end_min)
+        # timetable[branch][sem] -> {(day,slot): (code, name, faculty, type, room)}
+        self.timetable = {}
+        # occupied_rooms: (room, day) -> list of (start_min, end_min)
         self.occupied_rooms = {}
+        # branch_sem_intervals: (branch, sem, day) -> list of (start_min, end_min)
+        # prevents same students getting overlapping sessions
+        self.branch_sem_intervals = {}
+        # list of (branch, sem, course_name, type) that couldn't be fully scheduled
         self.unscheduled = []
 
-    def add_course(self, branch, sem, code, name, faculty, room, hours):
-        branch = str(branch)
-        sem = str(sem)
+    def add_course(self, branch, sem, code, name, faculty, room,
+                   lecture_hours, tutorial_hours, lab_hours):
+        branch, sem = str(branch), str(sem)
         if branch not in self.courses:
             self.courses[branch] = {}
         if sem not in self.courses[branch]:
             self.courses[branch][sem] = {}
-        self.courses[branch][sem][code] = [name, faculty, room, float(hours)]
+        self.courses[branch][sem][code] = {
+            "name": name,
+            "faculty": faculty,
+            "room": room,
+            "lecture_hours": int(lecture_hours),
+            "tutorial_hours": int(tutorial_hours),
+            "lab_hours": int(lab_hours)
+        }
 
+    # --- room overlap helpers ---
     def _room_conflicts(self, room, day, slot):
-        """Return True if (room,day,slot) conflicts with existing occupied intervals."""
-        start_min, end_min = _parse_slot_to_minutes(slot)
+        s_min, e_min = _parse_slot_to_minutes(slot)
         key = (room, day)
         if key not in self.occupied_rooms:
             return False
-        for (s, e) in self.occupied_rooms[key]:
-            if _intervals_overlap(start_min, end_min, s, e):
+        for (os, oe) in self.occupied_rooms[key]:
+            if _intervals_overlap(s_min, e_min, os, oe):
                 return True
         return False
 
-    def _mark_room_occupied(self, room, day, slot):
-        start_min, end_min = _parse_slot_to_minutes(slot)
+    def _mark_room(self, room, day, slot):
+        s_min, e_min = _parse_slot_to_minutes(slot)
         key = (room, day)
-        if key not in self.occupied_rooms:
-            self.occupied_rooms[key] = []
-        self.occupied_rooms[key].append((start_min, end_min))
+        self.occupied_rooms.setdefault(key, []).append((s_min, e_min))
+
+    # --- branch+sem student overlap helpers ---
+    def _branch_sem_conflicts(self, branch, sem, day, slot):
+        s_min, e_min = _parse_slot_to_minutes(slot)
+        key = (branch, sem, day)
+        if key not in self.branch_sem_intervals:
+            return False
+        for (bs, be) in self.branch_sem_intervals[key]:
+            if _intervals_overlap(s_min, e_min, bs, be):
+                return True
+        return False
+
+    def _mark_branch_sem(self, branch, sem, day, slot):
+        s_min, e_min = _parse_slot_to_minutes(slot)
+        key = (branch, sem, day)
+        self.branch_sem_intervals.setdefault(key, []).append((s_min, e_min))
 
     def generate_timetable(self, notify=True):
-        """Generate timetable. If notify False, no messagebox popups (useful for tests)."""
+        """
+        Returns (timetable, unscheduled).
+        If notify is True, messageboxes will be shown (UI). Tests should pass notify=False.
+        """
         self.timetable.clear()
         self.occupied_rooms.clear()
+        self.branch_sem_intervals.clear()
         self.unscheduled.clear()
 
         for branch, sems in self.courses.items():
             branch = str(branch)
-            for sem, sem_courses in sems.items():
+            for sem, courses in sems.items():
                 sem = str(sem)
-                all_slots = [(day, slot) for day in DAYS for slot in SLOTS]
-                random.shuffle(all_slots)
-
-                # convert hours -> number of required slots (ceil to ensure coverage)
-                remaining = {
-                    code: max(1, math.ceil(data[3] / self.SLOT_DURATION))
-                    for code, data in sem_courses.items()
-                }
-
-                used_today = {day: set() for day in DAYS}
                 timetable_branch_sem = {}
+                # used_today prevents same course twice in a day (for student convenience)
+                used_today = {d: set() for d in DAYS}
 
-                # while there is any course that still needs slots and we still have candidate slots
-                while any(hrs > 0 for hrs in remaining.values()) and all_slots:
-                    progress_made = False
-                    for code in list(sem_courses.keys()):
-                        if remaining[code] <= 0:
+                # Make fresh slot pools for this branch+sem (we'll remove assigned slots)
+                slot_pools = {
+                    ctype: [(d, s) for d in DAYS for s in pool]
+                    for ctype, pool in TimetableScheduler.TYPE_POOLS.items()
+                }
+                # shuffle each pool
+                for pool in slot_pools.values():
+                    random.shuffle(pool)
+
+                # Go over courses
+                for code, info in courses.items():
+                    # for each type compute required #slots = ceil(hours / type_duration)
+                    type_needs = {
+                        "Lecture": max(0, math.ceil(info.get("lecture_hours", 0) / self.TYPE_DURATION["Lecture"])),
+                        "Tutorial": max(0, math.ceil(info.get("tutorial_hours", 0) / self.TYPE_DURATION["Tutorial"])),
+                        "Lab": max(0, math.ceil(info.get("lab_hours", 0) / self.TYPE_DURATION["Lab"]))
+                    }
+
+                    # assign for each type separately
+                    for ctype, need in type_needs.items():
+                        if need <= 0:
                             continue
 
-                        success = False
-                        # try up to N random slots to place this course
-                        for _ in range(100):
-                            if not all_slots:
+                        pool = slot_pools[ctype]
+                        count = 0
+                        # We'll attempt up to `max_attempts` picks per required session
+                        max_attempts = 300
+
+                        while count < need and pool:
+                            assigned = False
+                            # try several random picks (bounded)
+                            for _ in range(max_attempts):
+                                if not pool:
+                                    break
+                                day, slot = random.choice(pool)
+                                room = info["room"]
+
+                                # 1) same course not twice in same day
+                                if code in used_today[day]:
+                                    continue
+                                # 2) room conflict (check real overlap)
+                                if self._room_conflicts(room, day, slot):
+                                    continue
+                                # 3) student conflict for this branch+sem (check real overlap)
+                                if self._branch_sem_conflicts(branch, sem, day, slot):
+                                    continue
+
+                                # All clear → assign
+                                timetable_branch_sem[(day, slot)] = (
+                                    code, info["name"], info["faculty"], ctype, room
+                                )
+                                used_today[day].add(code)
+                                self._mark_room(room, day, slot)
+                                self._mark_branch_sem(branch, sem, day, slot)
+
+                                # remove this specific (day,slot) from pool so we don't reuse it for same sem/type
+                                try:
+                                    pool.remove((day, slot))
+                                except ValueError:
+                                    pass
+
+                                count += 1
+                                assigned = True
                                 break
-                            day, slot = random.choice(all_slots)
-                            name, faculty, room, _ = sem_courses[code]
 
-                            # avoid same course twice per day
-                            if code in used_today[day]:
-                                continue
+                            # if we couldn't place any session for this required slot -> break so we avoid infinite loop
+                            if not assigned:
+                                break
 
-                            # avoid room time overlap (checks real time intervals)
-                            if self._room_conflicts(room, day, slot):
-                                continue
+                        # if we failed to place all needed slots, record unscheduled
+                        if count < need:
+                            self.unscheduled.append((branch, sem, info["name"], ctype))
 
-                            # assign slot
-                            timetable_branch_sem[(day, slot)] = (name, faculty, room)
-                            remaining[code] -= 1
-                            used_today[day].add(code)
-                            # mark room occupied for that day/time interval
-                            self._mark_room_occupied(room, day, slot)
+                # save timetable for branch/sem
+                self.timetable.setdefault(branch, {})[sem] = timetable_branch_sem
 
-                            # don't reuse the same (day,slot) for this sem again
-                            try:
-                                all_slots.remove((day, slot))
-                            except ValueError:
-                                pass
-
-                            success = True
-                            progress_made = True
-                            break
-
-                        if not success and remaining[code] > 0:
-                            # only append once
-                            entry = (branch, sem, sem_courses[code][0])
-                            if entry not in self.unscheduled:
-                                self.unscheduled.append(entry)
-
-                    # if we couldn't place any course in a full iteration -> break to avoid infinite loop
-                    if not progress_made:
-                        break
-
-                if branch not in self.timetable:
-                    self.timetable[branch] = {}
-                self.timetable[branch][sem] = timetable_branch_sem
-
-        if self.unscheduled:
-            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in self.unscheduled])
-            if notify:
-                messagebox.showwarning(
-                    "Unscheduled Courses",
-                    f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}"
-                )
-        else:
-            if notify:
-                messagebox.showinfo("Done", "✅ All timetables generated (hours per week honored, no room collisions)!")
+        # notifications
+        if notify:
+            if self.unscheduled:
+                warn_list = "\n".join([f"{b} Sem-{s}: {c} ({t})" for b, s, c, t in self.unscheduled])
+                messagebox.showwarning("Unscheduled Courses",
+                                       f"⚠ Some sessions couldn’t be scheduled:\n\n{warn_list}")
+            else:
+                messagebox.showinfo("Done", "✅ All timetables generated (no student or room overlaps)!")
 
         return self.timetable, self.unscheduled
