@@ -68,20 +68,24 @@ class TimetableApp:
             entry.grid(row=i, column=1, pady=6, padx=5)
             self.entries[lbl] = entry
 
-        # Branch + Semester
+        # Branch + Semester (entry)
         tk.Label(form_frame, text="Branch", font=("Segoe UI", 10, "bold"),
                  bg="#ffffff").grid(row=len(labels), column=0, sticky="e", padx=8, pady=6)
         self.branch_var = tk.StringVar()
-        ttk.Combobox(form_frame, textvariable=self.branch_var,
+        branch_cb = ttk.Combobox(form_frame, textvariable=self.branch_var,
                      values=["CSE", "DSAI", "ECE"],
-                     state="readonly", width=25).grid(row=len(labels), column=1, pady=6)
+                     state="readonly", width=25)
+        branch_cb.grid(row=len(labels), column=1, pady=6)
+        branch_cb.current(0)  # default
 
         tk.Label(form_frame, text="Semester", font=("Segoe UI", 10, "bold"),
                  bg="#ffffff").grid(row=len(labels)+1, column=0, sticky="e", padx=8, pady=6)
         self.sem_var = tk.StringVar()
-        ttk.Combobox(form_frame, textvariable=self.sem_var,
+        sem_cb = ttk.Combobox(form_frame, textvariable=self.sem_var,
                      values=[str(i) for i in range(1, 9)],
-                     state="readonly", width=25).grid(row=len(labels)+1, column=1, pady=6)
+                     state="readonly", width=25)
+        sem_cb.grid(row=len(labels)+1, column=1, pady=6)
+        sem_cb.current(0)  # default
 
         # Buttons
         btn_frame = tk.Frame(container, bg="#f0f3f7")
@@ -103,13 +107,17 @@ class TimetableApp:
 
         tk.Label(filter_frame, text="Branch:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=0, padx=5)
         self.display_branch = tk.StringVar()
-        ttk.Combobox(filter_frame, textvariable=self.display_branch,
-                     values=["CSE", "DSAI", "ECE"], state="readonly", width=12).grid(row=0, column=1, padx=5)
+        display_branch_cb = ttk.Combobox(filter_frame, textvariable=self.display_branch,
+                     values=["CSE", "DSAI", "ECE"], state="readonly", width=12)
+        display_branch_cb.grid(row=0, column=1, padx=5)
+        display_branch_cb.current(0)
 
         tk.Label(filter_frame, text="Semester:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=2, padx=5)
         self.display_sem = tk.StringVar()
-        ttk.Combobox(filter_frame, textvariable=self.display_sem,
-                     values=[str(i) for i in range(1, 9)], state="readonly", width=12).grid(row=0, column=3, padx=5)
+        display_sem_cb = ttk.Combobox(filter_frame, textvariable=self.display_sem,
+                     values=[str(i) for i in range(1, 9)], state="readonly", width=12)
+        display_sem_cb.grid(row=0, column=3, padx=5)
+        display_sem_cb.current(0)
 
         self.tree = ttk.Treeview(table_frame,
                                  columns=("Day", "Slot", "Course", "Faculty", "Room"),
@@ -133,8 +141,8 @@ class TimetableApp:
             branch = str(self.branch_var.get())
             sem = str(self.sem_var.get())
 
-            if not code or not name or not faculty or not room:
-                raise ValueError("Empty fields")
+            if not code or not name or not faculty or not room or not branch or not sem:
+                raise ValueError("Empty fields — make sure Branch and Semester are selected")
 
             if branch not in self.courses:
                 self.courses[branch] = {}
@@ -152,12 +160,31 @@ class TimetableApp:
 
     def generate_all(self):
         scheduler = TimetableScheduler(self.courses)
-        self.timetable, unscheduled = scheduler.generate_timetable()
+        # suppress internal scheduler messageboxes; UI will show appropriate notification
+        self.timetable, unscheduled = scheduler.generate_timetable(notify=False)
+
+        # if we successfully generated something, pick first branch/sem to display by default
+        if self.timetable:
+            first_branch = next(iter(self.timetable))
+            first_sem = next(iter(self.timetable[first_branch]))
+            self.display_branch.set(first_branch)
+            self.display_sem.set(first_sem)
+
+        if unscheduled:
+            warn_list = "\n".join([f"{b} Sem-{s}: {c}" for b, s, c in unscheduled])
+            messagebox.showwarning("Unscheduled Courses",
+                                f"⚠ Some courses couldn’t be fully scheduled:\n\n{warn_list}")
+        else:
+            messagebox.showinfo("Done", "✅ All timetables generated (hours per week honored, no room collisions)!")
 
     def show_timetable(self):
         self.tree.delete(*self.tree.get_children())
         branch = str(self.display_branch.get())
         sem = str(self.display_sem.get())
+
+        if not branch or not sem:
+            messagebox.showwarning("Not Selected", "⚠ Please select Branch and Semester first")
+            return
 
         if branch in self.timetable and sem in self.timetable[branch]:
             def sort_key(item):

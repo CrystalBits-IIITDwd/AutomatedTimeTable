@@ -25,4 +25,4 @@ def export_to_csv(timetable):
                 writer = csv.writer(f)
                 writer.writerow(["Day", "Slot", "Course", "Faculty", "Room"])
                 for (day, slot), (course, faculty, room) in table.items():
-                    writer.writerow([day,slot,course,faculty,room])
+                    writer.writerow([day, slot, course, faculty, room])

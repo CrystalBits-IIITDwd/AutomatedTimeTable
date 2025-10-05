@@ -1,11 +1,32 @@
-from src.models import Course
+from src.scheduler import TimetableScheduler
 
-def test_course_creation():
-    course = Course("CS101", "Intro to CS", "Prof X", "C101", 3, "CSE", "1")
-    assert course.code == "CS101"
-    assert course.name == "Intro to CS"
-    assert course.faculty == "Prof X"
-    assert course.room == "C101"
-    assert course.hours_per_week == 3
-    assert course.branch == "CSE"
-    assert course.semester == "1"
+def _to_minutes(slot):
+    s, e = slot.split("-")
+    sh, sm = map(int, s.split(":"))
+    eh, em = map(int, e.split(":"))
+    return sh * 60 + sm, eh * 60 + em
+
+def test_scheduler_no_room_overlap():
+    scheduler = TimetableScheduler()
+
+    # Add two courses placed in same room but different semesters
+    scheduler.add_course("CSE", "3", "CS301", "Networks", "Prof A", "C205", 1)
+    scheduler.add_course("CSE", "5", "CS501", "Software", "Prof B", "C205", 1)
+
+    timetable, unscheduled = scheduler.generate_timetable(notify=False)
+
+    # Build assignments per (room, day) and ensure no overlapping intervals
+    assignments = {}  # (room, day) -> list of (start, end)
+    for branch in timetable:
+        for sem in timetable[branch]:
+            for (day, slot), (_, _, room) in timetable[branch][sem].items():
+                s, e = _to_minutes(slot)
+                key = (room, day)
+                if key not in assignments:
+                    assignments[key] = []
+                # ensure no overlap with existing intervals
+                for (os, oe) in assignments[key]:
+                    assert oe <= s or e <= os
+                assignments[key].append((s, e))
+
+    assert len(unscheduled) == 0
