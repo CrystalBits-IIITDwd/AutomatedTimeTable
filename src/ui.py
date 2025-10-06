@@ -68,7 +68,7 @@ class TimetableApp:
             entry.grid(row=i, column=1, pady=6, padx=5)
             self.entries[lbl] = entry
 
-        # Lab Room moved below Class Room
+        # Lab Room below Class Room
         lab_row = labels.index("Lab Hours")
         tk.Label(form_frame, text="Lab Room", font=("Segoe UI", 10, "bold"),
                  bg="#ffffff", fg="#444").grid(row=lab_row+1, column=0, sticky="e", padx=8, pady=6)
@@ -127,26 +127,16 @@ class TimetableApp:
         display_sem_cb.grid(row=0, column=3, padx=5)
         display_sem_cb.current(0)
 
-        # Treeview with horizontal scroll
+        # Treeview with dynamic column widths
         tree_container = tk.Frame(table_frame)
         tree_container.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.tree = ttk.Treeview(tree_container,
                                  columns=("Day", "Slot", "Code", "Course", "Faculty", "Type", "Room"),
-                                 show="headings", height=22)
-        col_widths = {
-            "Day": 70,
-            "Slot": 120,
-            "Code": 100,
-            "Course": 320,
-            "Faculty": 140,
-            "Type": 100,
-            "Room": 110
-        }
-        for col in ("Day", "Slot", "Code", "Course", "Faculty", "Type", "Room"):
+                                 show="headings")
+        for col in self.tree["columns"]:
             self.tree.heading(col, text=col)
-            anchor = "w" if col == "Course" else "center"
-            self.tree.column(col, width=col_widths[col], anchor=anchor)
+            self.tree.column(col, width=100, anchor="center")  # initial width
 
         h_scroll = tk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
         v_scroll = tk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
@@ -226,6 +216,10 @@ class TimetableApp:
                 self.tree.insert("", "end",
                                  values=(day, slot, code, name, faculty, ctype, room),
                                  tags=(tag,))
+            # Auto-adjust column widths
+            for col in self.tree["columns"]:
+                max_width = max([len(str(self.tree.set(k, col))) for k in self.tree.get_children()] + [len(col)])
+                self.tree.column(col, width=max(100, min(max_width*10, 400)))  # width between 100-400
         else:
             messagebox.showwarning("Not Found", "⚠ No timetable found for this Branch & Semester")
 
