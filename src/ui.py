@@ -151,7 +151,7 @@ class TimetableApp:
         edit_frame = tk.LabelFrame(container, text="🛠 Edit / Remove Courses",
                                    font=("Segoe UI", 13, "bold"), bg="#ffffff", fg="#222",
                                    padx=20, pady=10, relief="groove")
-        edit_frame.place(x=1220, y=10, width=250, height=700)
+        edit_frame.place(x=1220, y=10, width=400, height=700)
 
         tk.Label(edit_frame, text="Branch:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.edit_branch_var = tk.StringVar()
@@ -171,11 +171,12 @@ class TimetableApp:
         self.edit_course_var = tk.StringVar()
         self.course_cb = ttk.Combobox(edit_frame, textvariable=self.edit_course_var, state="readonly", width=18)
         self.course_cb.grid(row=5, column=0, padx=5, pady=5)
-        self.styled_button(edit_frame, "🔄 Load", self.load_course_for_edit, color="#17a2b8").grid(row=6, column=0, padx=5, pady=5)
+        self.styled_button(edit_frame, "💾 Save", self.save_course_edit, color="#007bff").grid(row=7, column=0, padx=5, pady=5, sticky="ew")
+        self.styled_button(edit_frame, "❌ Remove", self.remove_course, color="#dc3545").grid(row=7, column=1, padx=5, pady=5, sticky="ew")
+        self.styled_button(edit_frame, "🔃 Refresh", self.refresh_course_list, color="#6c757d").grid(row=8, column=0, padx=5, pady=5, sticky="ew")
+        self.styled_button(edit_frame, "🔄 Load", self.load_course_for_edit, color="#17a2b8").grid(row=8, column=1, padx=5, pady=5, sticky="ew")
 
-        self.styled_button(edit_frame, "💾 Save", self.save_course_edit, color="#007bff").grid(row=7, column=0, padx=5, pady=5)
-        self.styled_button(edit_frame, "❌ Remove", self.remove_course, color="#dc3545").grid(row=8, column=0, padx=5, pady=5)
-        self.styled_button(edit_frame, "🔃 Refresh", self.refresh_course_list, color="#6c757d").grid(row=9, column=0, padx=5, pady=5)
+
 
     # === LOGIC ===
     def add_course(self):
