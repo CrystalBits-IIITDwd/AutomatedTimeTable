@@ -28,6 +28,9 @@ LAB_SLOTS = [
     "14:00-16:00"
 ]
 
+# Combined list expected by tests / utilities
+SLOTS = LECTURE_SLOTS + TUTORIAL_SLOTS + LAB_SLOTS
+
 def export_to_csv(timetable):
     for branch, sems in timetable.items():
         for sem, table in sems.items():

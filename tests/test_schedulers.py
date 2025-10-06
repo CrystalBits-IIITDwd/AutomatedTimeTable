@@ -19,7 +19,8 @@ def test_scheduler_no_room_overlap():
     assignments = {}  # (room, day) -> list of (start, end)
     for branch in timetable:
         for sem in timetable[branch]:
-            for (day, slot), (_, _, room) in timetable[branch][sem].items():
+            # scheduler stores (code, name, faculty, type, room)
+            for (day, slot), (_, _, _, _, room) in timetable[branch][sem].items():
                 s, e = _to_minutes(slot)
                 key = (room, day)
                 if key not in assignments:

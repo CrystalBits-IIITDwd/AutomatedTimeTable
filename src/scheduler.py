@@ -57,8 +57,8 @@ class TimetableScheduler:
         # list of (branch, sem, course_name, type) that couldn't be fully scheduled
         self.unscheduled = []
 
-    def add_course(self, branch, sem, code, name, faculty, room,
-                   lecture_hours, tutorial_hours, lab_hours):
+    def add_course(self, branch, sem, code, name, faculty, room, 
+                   lecture_hours=0, tutorial_hours=0, lab_hours=0):
         branch, sem = str(branch), str(sem)
         if branch not in self.courses:
             self.courses[branch] = {}
