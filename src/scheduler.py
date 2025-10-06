@@ -44,10 +44,10 @@ class TimetableScheduler:
 
     def __init__(self, courses=None):
         # courses[branch][sem][code] = {
-        #   name, faculty, room, lecture_hours, tutorial_hours, lab_hours
+        #   name, faculty, class_room, lab_room, lecture_hours, tutorial_hours, lab_hours
         # }
         self.courses = courses or {}
-        # timetable[branch][sem] -> {(day,slot): (code, name, faculty, type, room)}
+        # timetable[branch][sem] -> {(day,slot): (code, name, faculty, type, room_used)}
         self.timetable = {}
         # occupied_rooms: (room, day) -> list of (start_min, end_min)
         self.occupied_rooms = {}
@@ -57,8 +57,12 @@ class TimetableScheduler:
         # list of (branch, sem, course_name, type) that couldn't be fully scheduled
         self.unscheduled = []
 
-    def add_course(self, branch, sem, code, name, faculty, room, 
-                   lecture_hours=0, tutorial_hours=0, lab_hours=0):
+    def add_course(self, branch, sem, code, name, faculty, room,
+                   lecture_hours=0, tutorial_hours=0, lab_hours=0, lab_room=None):
+        """
+        Backwards-compatible: `room` is treated as the class (lecture/tutorial) room.
+        Optional lab_room can be passed (keyword) for lab sessions.
+        """
         branch, sem = str(branch), str(sem)
         if branch not in self.courses:
             self.courses[branch] = {}
@@ -67,7 +71,8 @@ class TimetableScheduler:
         self.courses[branch][sem][code] = {
             "name": name,
             "faculty": faculty,
-            "room": room,
+            "class_room": room,                      # class/tutorial room
+            "lab_room": (lab_room or ""),            # lab room (may be empty)
             "lecture_hours": int(lecture_hours),
             "tutorial_hours": int(tutorial_hours),
             "lab_hours": int(lab_hours)
@@ -146,6 +151,16 @@ class TimetableScheduler:
                         if need <= 0:
                             continue
 
+                        # Quick validation: can't schedule labs if lab_room not provided
+                        if ctype == "Lab" and not info.get("lab_room"):
+                            # record unscheduled for this course/type
+                            self.unscheduled.append((branch, sem, info.get("name", code), ctype))
+                            continue
+                        # Also ensure class_room exists for Lecture/Tutorial
+                        if ctype in ("Lecture", "Tutorial") and not info.get("class_room"):
+                            self.unscheduled.append((branch, sem, info.get("name", code), ctype))
+                            continue
+
                         pool = slot_pools[ctype]
                         count = 0
                         # We'll attempt up to `max_attempts` picks per required session
@@ -158,21 +173,29 @@ class TimetableScheduler:
                                 if not pool:
                                     break
                                 day, slot = random.choice(pool)
-                                room = info["room"]
+
+                                # choose room depending on session type
+                                if ctype == "Lab":
+                                    room = info.get("lab_room") or info.get("class_room") or ""
+                                else:
+                                    room = info.get("class_room") or info.get("room") or ""
 
                                 # 1) same course not twice in same day
                                 if code in used_today[day]:
                                     continue
                                 # 2) room conflict (check real overlap)
+                                if not room:
+                                    # no available room -> can't assign here
+                                    continue
                                 if self._room_conflicts(room, day, slot):
                                     continue
                                 # 3) student conflict for this branch+sem (check real overlap)
                                 if self._branch_sem_conflicts(branch, sem, day, slot):
                                     continue
 
-                                # All clear → assign
+                                # All clear → assign (store the room actually used for this session)
                                 timetable_branch_sem[(day, slot)] = (
-                                    code, info["name"], info["faculty"], ctype, room
+                                    code, info.get("name"), info.get("faculty"), ctype, room
                                 )
                                 used_today[day].add(code)
                                 self._mark_room(room, day, slot)
@@ -194,7 +217,7 @@ class TimetableScheduler:
 
                         # if we failed to place all needed slots, record unscheduled
                         if count < need:
-                            self.unscheduled.append((branch, sem, info["name"], ctype))
+                            self.unscheduled.append((branch, sem, info.get("name", code), ctype))
 
                 # save timetable for branch/sem
                 self.timetable.setdefault(branch, {})[sem] = timetable_branch_sem

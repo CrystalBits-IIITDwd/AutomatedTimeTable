@@ -8,7 +8,7 @@ class TimetableApp:
     def __init__(self, root):
         self.root = root
         self.root.title("🎓 Automated Timetable Scheduler")
-        self.root.geometry("1150x750")
+        self.root.geometry("1250x750")
         self.root.configure(bg="#f0f3f7")
 
         self.courses = {}
@@ -54,9 +54,10 @@ class TimetableApp:
                                    font=("Segoe UI", 13, "bold"),
                                    bg="#ffffff", fg="#222",
                                    padx=20, pady=10, relief="groove")
-        form_frame.place(x=10, y=10, width=420, height=460)
+        form_frame.place(x=10, y=10, width=420, height=520)
 
-        labels = ["Course Code", "Course Name", "Faculty", "Room",
+        # Labels & Entries
+        labels = ["Course Code", "Course Name", "Faculty", "Class Room",
                   "Lecture Hours", "Tutorial Hours", "Lab Hours"]
         self.entries = {}
         for i, lbl in enumerate(labels):
@@ -67,36 +68,47 @@ class TimetableApp:
             entry.grid(row=i, column=1, pady=6, padx=5)
             self.entries[lbl] = entry
 
+        # Lab Room moved below Class Room
+        lab_row = labels.index("Lab Hours")
+        tk.Label(form_frame, text="Lab Room", font=("Segoe UI", 10, "bold"),
+                 bg="#ffffff", fg="#444").grid(row=lab_row+1, column=0, sticky="e", padx=8, pady=6)
+        lab_entry = tk.Entry(form_frame, font=("Segoe UI", 10), width=28,
+                             relief="solid", bd=1, bg="#f9f9f9")
+        lab_entry.grid(row=lab_row+1, column=1, pady=6, padx=5)
+        self.entries["Lab Room"] = lab_entry
+
         # Branch and Semester
+        base_row = lab_row + 2
         tk.Label(form_frame, text="Branch", font=("Segoe UI", 10, "bold"),
-                 bg="#ffffff").grid(row=len(labels), column=0, sticky="e", padx=8, pady=6)
+                 bg="#ffffff").grid(row=base_row, column=0, sticky="e", padx=8, pady=6)
         self.branch_var = tk.StringVar()
         branch_cb = ttk.Combobox(form_frame, textvariable=self.branch_var,
                                  values=["CSE", "DSAI", "ECE"], state="readonly", width=25)
-        branch_cb.grid(row=len(labels), column=1, pady=6)
+        branch_cb.grid(row=base_row, column=1, pady=6)
         branch_cb.current(0)
 
         tk.Label(form_frame, text="Semester", font=("Segoe UI", 10, "bold"),
-                 bg="#ffffff").grid(row=len(labels)+1, column=0, sticky="e", padx=8, pady=6)
+                 bg="#ffffff").grid(row=base_row+1, column=0, sticky="e", padx=8, pady=6)
         self.sem_var = tk.StringVar()
         sem_cb = ttk.Combobox(form_frame, textvariable=self.sem_var,
                               values=[str(i) for i in range(1, 9)], state="readonly", width=25)
-        sem_cb.grid(row=len(labels)+1, column=1, pady=6)
+        sem_cb.grid(row=base_row+1, column=1, pady=6)
         sem_cb.current(0)
 
+        # Buttons
         btn_frame = tk.Frame(container, bg="#f0f3f7")
-        btn_frame.place(x=10, y=490, width=420)
+        btn_frame.place(x=10, y=540, width=420)
         self.styled_button(btn_frame, "➕ Add Course", self.add_course).grid(row=0, column=0, padx=10, pady=10)
         self.styled_button(btn_frame, "⚡ Generate All", self.generate_all, color="#28a745").grid(row=0, column=1, padx=10, pady=10)
         self.styled_button(btn_frame, "📖 Show Timetable", self.show_timetable, color="#6f42c1").grid(row=1, column=0, padx=10, pady=10)
         self.styled_button(btn_frame, "📤 Export CSV", self.export_csv, color="#e83e8c").grid(row=1, column=1, padx=10, pady=10)
 
-        # Timetable viewer
+        # Timetable viewer with scrollbars
         table_frame = tk.LabelFrame(container, text="📊 Timetable Viewer",
                                     font=("Segoe UI", 13, "bold"),
                                     bg="#ffffff", fg="#222",
                                     relief="groove")
-        table_frame.place(x=450, y=10, width=670, height=700)
+        table_frame.place(x=450, y=10, width=760, height=700)
 
         filter_frame = tk.Frame(table_frame, bg="#ffffff")
         filter_frame.pack(fill="x", pady=5)
@@ -115,13 +127,34 @@ class TimetableApp:
         display_sem_cb.grid(row=0, column=3, padx=5)
         display_sem_cb.current(0)
 
-        self.tree = ttk.Treeview(table_frame,
+        # Treeview with horizontal scroll
+        tree_container = tk.Frame(table_frame)
+        tree_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.tree = ttk.Treeview(tree_container,
                                  columns=("Day", "Slot", "Code", "Course", "Faculty", "Type", "Room"),
-                                 show="headings", height=20)
+                                 show="headings", height=22)
+        col_widths = {
+            "Day": 70,
+            "Slot": 120,
+            "Code": 100,
+            "Course": 320,
+            "Faculty": 140,
+            "Type": 100,
+            "Room": 110
+        }
         for col in ("Day", "Slot", "Code", "Course", "Faculty", "Type", "Room"):
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=110, anchor="center")
-        self.tree.pack(padx=10, pady=10, fill="both", expand=True)
+            anchor = "w" if col == "Course" else "center"
+            self.tree.column(col, width=col_widths[col], anchor=anchor)
+
+        h_scroll = tk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
+        v_scroll = tk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
+        self.tree.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
+        v_scroll.pack(side="right", fill="y")
+        h_scroll.pack(side="bottom", fill="x")
+        self.tree.pack(fill="both", expand=True)
+
         self.tree.tag_configure('oddrow', background="#f9f9f9")
         self.tree.tag_configure('evenrow', background="#eef6ff")
 
@@ -131,23 +164,27 @@ class TimetableApp:
             code = self.entries["Course Code"].get().strip()
             name = self.entries["Course Name"].get().strip()
             faculty = self.entries["Faculty"].get().strip()
-            room = self.entries["Room"].get().strip()
-            lec = int(self.entries["Lecture Hours"].get().strip())
-            tut = int(self.entries["Tutorial Hours"].get().strip())
-            lab = int(self.entries["Lab Hours"].get().strip())
+            class_room = self.entries["Class Room"].get().strip()
+            lab_room = self.entries["Lab Room"].get().strip()
+            lec = int(self.entries["Lecture Hours"].get().strip() or 0)
+            tut = int(self.entries["Tutorial Hours"].get().strip() or 0)
+            lab = int(self.entries["Lab Hours"].get().strip() or 0)
             branch = self.branch_var.get()
             sem = self.sem_var.get()
 
-            if not all([code, name, faculty, room, branch, sem]):
-                raise ValueError("Empty fields detected")
+            if not all([code, name, faculty, class_room, branch, sem]):
+                raise ValueError("Empty fields detected. Class Room is required.")
+            if lab > 0 and not lab_room:
+                raise ValueError("Lab room required for non-zero Lab Hours")
 
             self.courses.setdefault(branch, {}).setdefault(sem, {})
             self.courses[branch][sem][code] = {
-                "name": name, "faculty": faculty, "room": room,
+                "name": name, "faculty": faculty,
+                "class_room": class_room, "lab_room": lab_room,
                 "lecture_hours": lec, "tutorial_hours": tut, "lab_hours": lab
             }
             messagebox.showinfo("Success",
-                                f"✅ Added {name} ({lec}/{tut}/{lab}) hrs/week for {branch} Sem-{sem}")
+                                f"✅ Added {name} ({lec}/{tut}/{lab}) hrs/week for {branch} Sem-{sem}\nClass Room: {class_room}" + (f", Lab Room: {lab_room}" if lab_room else ""))
             for e in self.entries.values():
                 e.delete(0, tk.END)
         except Exception as e:

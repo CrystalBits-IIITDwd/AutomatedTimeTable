@@ -6,11 +6,16 @@ class Course:
       - Course(code, name, faculty, room, lecture_hours, tutorial_hours, lab_hours, branch, semester)
     Also accepts keyword args: lecture_hours, tutorial_hours, lab_hours, branch, semester.
     Always exposes .lecture_hours, .tutorial_hours, .lab_hours and .hours_per_week.
+
+    Note: 'room' is retained for backwards compatibility. New attributes:
+      - class_room (preferred for Lecture/Tutorial)
+      - lab_room   (preferred for Lab sessions)
     """
     def __init__(self, code, name, faculty, room, *args, **kwargs):
         self.code = code
         self.name = name
         self.faculty = faculty
+        # legacy single-room field
         self.room = room
 
         # defaults
@@ -58,6 +63,12 @@ class Course:
             self.branch = str(self.branch)
         if self.semester is not None:
             self.semester = str(self.semester)
+
+        # New fields for explicit rooms. Keep backwards compatibility:
+        # class_room defaults to the legacy `room` positional arg.
+        self.class_room = kwargs.get("class_room", self.room)
+        # lab_room may be empty string if course has no labs
+        self.lab_room = kwargs.get("lab_room", "")
 
     def __repr__(self):
         return f"{self.code} - {self.name} ({self.faculty})"
