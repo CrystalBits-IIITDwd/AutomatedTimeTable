@@ -1,4 +1,3 @@
-# utils.py
 import csv
 
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
@@ -31,7 +30,9 @@ LAB_SLOTS = [
 # Combined list expected by tests / utilities
 SLOTS = LECTURE_SLOTS + TUTORIAL_SLOTS + LAB_SLOTS
 
+
 def export_to_csv(timetable):
+    """Exports the given timetable dictionary into CSV files per branch and semester."""
     for branch, sems in timetable.items():
         for sem, table in sems.items():
             fname = f"timetable_{branch}_Sem{sem}.csv"
@@ -39,8 +40,4 @@ def export_to_csv(timetable):
                 writer = csv.writer(f)
                 writer.writerow(["Day", "Slot", "Course Code", "Course Name", "Faculty", "Type", "Room"])
                 for (day, slot), (code, name, faculty, ctype, room) in table.items():
-<<<<<<< HEAD
                     writer.writerow([day, slot, code, name, faculty, ctype, room])
-=======
-                    writer.writerow([day, slot, code, name, faculty, ctype, room])
->>>>>>> 048547a4d3fbd5b246f21809d2531d1547ef4e09
