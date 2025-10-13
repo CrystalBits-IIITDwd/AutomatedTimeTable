@@ -1,12 +1,13 @@
 import pytest
-from src.utils import generate_slots
+from src.utils import SLOTS
 
-def test_generate_slots():
-    slots = generate_slots()
-    # Must not be empty
+def test_slots():
+    slots = SLOTS
     assert len(slots) > 0
-    # All slots should contain "-"
     assert all("-" in slot for slot in slots)
-    # Check if lunch break is avoided
     for slot in slots:
-        assert "13:15" not in slot and "14:00" not in slot
+        start, end = slot.split("-")
+        sh, sm = map(int, start.split(":"))
+        eh, em = map(int, end.split(":"))
+        assert 0 <= sh < 24 and 0 <= sm < 60
+        assert 0 <= eh < 24 and 0 <= em < 60

@@ -39,4 +39,8 @@ def export_to_csv(timetable):
                 writer = csv.writer(f)
                 writer.writerow(["Day", "Slot", "Course Code", "Course Name", "Faculty", "Type", "Room"])
                 for (day, slot), (code, name, faculty, ctype, room) in table.items():
+<<<<<<< HEAD
                     writer.writerow([day, slot, code, name, faculty, ctype, room])
+=======
+                    writer.writerow([day, slot, code, name, faculty, ctype, room])
+>>>>>>> 048547a4d3fbd5b246f21809d2531d1547ef4e09
