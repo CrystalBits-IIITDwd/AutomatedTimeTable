@@ -1,0 +1,37 @@
+Room,Description,Seating capacity,Allocation Information
+C001,Recreation,nil,
+C002,Large classroom,116,
+C003,Large classroom,135,
+C004,Auditorium,240,
+C101,Classroom,96,3ECE
+C102,Classroom,96,5CSE-B
+C103,Library,nil,
+C104,Classroom,96,5CSE-A
+L105,Hardware lab,40,
+L106,Software lab,40,
+L107,Software lab,40,
+C201,Examination hall,nil,
+C202,Classroom,96,3CSE-A
+C203,Classroom,96,3DSAI
+C204,Classroom,96,5DSAI
+C205,Classroom,96,3CSE-B
+L206,Hardware lab,40,
+L207,Software lab,40,
+L208,Software lab,40,
+C301,Physics lab,nil,5ECE
+C302,Classroom,96,
+C303,Classroom,96,
+C304,Classroom,96,1CSE-A
+C305,Classroom,96,1CSE-B
+L306,Empty,nil,
+L307,Research lab,40,
+L308,Research lab,40,
+C401,Empty,nil,
+C402,Classroom,96,
+C403,Classroom,78,
+C404,Classroom,78,
+C405,Classroom,78,
+C406,Classroom,78,
+C407,Classroom,78,
+C408,Classroom,78,
+L408,Classroom,78,
