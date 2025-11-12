@@ -1,0 +1,26 @@
+Course_Code,Course_Title,L-T-P-S-C,Faculty,Branch,Semester,Students
+CS101,Data Structures,3-1-2,Dr. Ramesh,CSE,3,78
+CS102,Algorithms,3-1-0,Prof. Meena,CSE,4,74
+CS103,Operating Systems,3-0-2,Dr. Rao,CSE,5,81
+CS104,Computer Networks,3-0-2,Prof. Prakash,CSE,5,69
+CS105,Database Systems,3-1-2,Dr. Sinha,CSE,4,72
+CS106,Machine Learning,3-0-2,Dr. Nandita,DSAI,5,65
+CS107,Artificial Intelligence,3-1-2,Dr. Swati,DSAI,6,61
+CS108,Deep Learning,3-0-2,Dr. Arjun,DSAI,7,54
+EC101,Digital Logic Design,3-1-0,Prof. Vivek,ECE,3,70
+EC102,Microprocessors,3-0-2,Dr. Chatterjee,ECE,4,65
+EC103,Analog Circuits,3-1-2,Dr. Latha,ECE,5,73
+EC104,VLSI Design,3-0-2,Dr. Naveen,ECE,6,68
+EC105,Communication Systems,3-1-0,Dr. Jyoti,ECE,5,66
+CS201,Software Engineering,3-0-2,Dr. Priya,CSE,6,85
+CS202,Compiler Design,3-1-0,Dr. Kiran,CSE,6,83
+CS203,Web Technologies,3-0-2,Dr. Aditya,CSE,5,77
+CS204,Cloud Computing,3-0-2,Dr. Dev,CSE,7,60
+CS205,Cyber Security,3-0-2,Prof. Sneha,CSE,7,55
+CS206,Data Mining,3-0-2,Dr. Rajesh,DSAI,6,59
+EC201,Embedded Systems,3-1-2,Prof. Ravi,ECE,6,70
+EC202,Control Systems,3-0-2,Dr. Renu,ECE,6,63
+EC203,Signal Processing,3-1-0,Dr. Kumar,ECE,5,67
+EC204,Machine Vision,3-0-2,Dr. Reeta,ECE,7,52
+EC205,Neural Networks,3-0-2,Dr. Ritesh,ECE,7,56
+CS251,Gen AI,3-0-0,Dr. Sunil Saumya,CSE,3,70

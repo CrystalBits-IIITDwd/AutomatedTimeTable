@@ -1,0 +1,16 @@
+Room No,Room Type,Capacity,Facilities
+B101,LECTURE,80,Projector;Whiteboard;AC
+B102,LECTURE,75,Projector;Fan
+B103,LECTURE,60,Whiteboard;AC
+B104,LECTURE,70,Projector;Smartboard
+B105,LECTURE,90,Projector;Audio System;AC
+L201,LAB,40,Computers;Projector;AC
+L202,LAB,35,Computers;Fan
+L203,LAB,45,Computers;Audio System
+L204,LAB,30,Computers;Smartboard
+L205,LAB,25,Computers;Projector
+C301,TUTORIAL,40,Whiteboard;Fan
+C302,TUTORIAL,35,Whiteboard
+C303,TUTORIAL,50,Whiteboard;AC
+C304,TUTORIAL,45,Smartboard;AC
+C305,TUTORIAL,30,Whiteboard

@@ -1,41 +1,26 @@
 # models.py
 class Course:
     """
-    Flexible Course model that supports either:
-      - Course(code, name, faculty, room, hours_per_week, branch, semester)
-      - Course(code, name, faculty, room, lecture_hours, tutorial_hours, lab_hours, branch, semester)
-    Also accepts keyword args: lecture_hours, tutorial_hours, lab_hours, branch, semester.
-    Always exposes .lecture_hours, .tutorial_hours, .lab_hours and .hours_per_week.
-
-    Note: 'room' is retained for backwards compatibility. New attributes:
-      - class_room (preferred for Lecture/Tutorial)
-      - lab_room   (preferred for Lab sessions)
+    Flexible Course model kept for compatibility.
     """
     def __init__(self, code, name, faculty, room, *args, **kwargs):
         self.code = code
         self.name = name
         self.faculty = faculty
-        # legacy single-room field
         self.room = room
 
-        # defaults
         self.lecture_hours = 0
         self.tutorial_hours = 0
         self.lab_hours = 0
         self.branch = kwargs.get("branch")
         self.semester = kwargs.get("semester")
 
-        # 1) form: (hours_per_week, branch, semester)
-        if len(args) == 3 and (isinstance(args[0], (int, str)) and isinstance(args[1], str) and isinstance(args[2], str)):
+        if len(args) == 3:
             hours_per_week = int(args[0])
             self.lecture_hours = hours_per_week
-            self.tutorial_hours = 0
-            self.lab_hours = 0
+            self.hours_per_week = hours_per_week
             self.branch = args[1]
             self.semester = args[2]
-            self.hours_per_week = hours_per_week
-
-        # 2) form: (lecture_hours, tutorial_hours, lab_hours, branch, semester)
         elif len(args) == 5:
             self.lecture_hours = int(args[0])
             self.tutorial_hours = int(args[1])
@@ -43,9 +28,7 @@ class Course:
             self.branch = args[3]
             self.semester = args[4]
             self.hours_per_week = self.lecture_hours + self.tutorial_hours + self.lab_hours
-
         else:
-            # fall back to kwargs
             if "lecture_hours" in kwargs:
                 self.lecture_hours = int(kwargs["lecture_hours"])
             if "tutorial_hours" in kwargs:
@@ -58,16 +41,12 @@ class Course:
                 self.semester = kwargs["semester"]
             self.hours_per_week = self.lecture_hours + self.tutorial_hours + self.lab_hours
 
-        # normalize branch/semester to strings if present
         if self.branch is not None:
             self.branch = str(self.branch)
         if self.semester is not None:
             self.semester = str(self.semester)
 
-        # New fields for explicit rooms. Keep backwards compatibility:
-        # class_room defaults to the legacy `room` positional arg.
         self.class_room = kwargs.get("class_room", self.room)
-        # lab_room may be empty string if course has no labs
         self.lab_room = kwargs.get("lab_room", "")
 
     def __repr__(self):

@@ -1,25 +1,26 @@
 # ui.py
 import tkinter as tk
-from tkinter import ttk, messagebox
-from .scheduler import TimetableScheduler
-from .utils import export_to_csv, DAYS
+from tkinter import ttk, messagebox, filedialog
+from .scheduler import TimetableScheduler, ExamScheduler
+from .csv_import import load_classrooms, load_courses
+from .utils import export_to_csv, export_exam_schedule, DAYS
 
 class TimetableApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("🎓 Automated Timetable Scheduler")
-        self.root.geometry("1450x750")
-        self.root.configure(bg="#f0f3f7")
-
-        self.courses = {}
-        self.timetable = {}
-
+    def __init__(self, notebook):
+        self.notebook = notebook
         self.setup_styles()
-        self.setup_ui()
+        
+        # data stores
+        self.courses = {}     # structure: courses[branch][sem][code] = {...}
+        self.classrooms = []  # list of classroom dicts
+        self.timetable = {}
+        self.exam_schedule = []
+        
+        self.setup_class_tab()
+        self.setup_exam_tab()
 
-    # === STYLING ===
     def setup_styles(self):
-        style = ttk.Style(self.root)
+        style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview",
                         background="#ffffff",
@@ -42,143 +43,388 @@ class TimetableApp:
         btn.bind("<Leave>", lambda e: btn.config(bg=color))
         return btn
 
-    # === GUI SETUP ===
-    def setup_ui(self):
-        # --- TITLE ---
-        title_frame = tk.Frame(self.root, bg="#0052cc", height=70)
-        title_frame.pack(fill="x")
+    def create_scrollable_frame(self, parent):
+        """Create a scrollable frame with canvas and scrollbar"""
+        # Create main frame
+        main_frame = tk.Frame(parent)
+        main_frame.pack(fill="both", expand=True)
+        
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(main_frame, bg="#f0f3f7")
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#f0f3f7")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Mouse wheel binding
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        
+        return scrollable_frame
+
+    def setup_class_tab(self):
+        """Setup class timetable scheduling tab."""
+        class_frame = ttk.Frame(self.notebook)
+        self.notebook.add(class_frame, text="🏫 Class Scheduling")
+        
+        # Create scrollable container
+        container = self.create_scrollable_frame(class_frame)
+        
+        # Title
+        title_frame = tk.Frame(container, bg="#0052cc", height=70)
+        title_frame.pack(fill="x", pady=(0, 15))
         tk.Label(title_frame, text="📅 Automated Timetable Scheduler",
                  font=("Segoe UI", 22, "bold"), bg="#0052cc", fg="white").pack(pady=15)
 
-        container = tk.Frame(self.root, bg="#f0f3f7")
-        container.pack(fill="both", expand=True, padx=20, pady=15)
+        # Main content frame
+        content_frame = tk.Frame(container, bg="#f0f3f7")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
-        # ===== ADD COURSE SECTION =====
-        form_frame = tk.LabelFrame(container, text="➕ Add New Course",
+        # Left panel - Forms and controls
+        left_panel = tk.Frame(content_frame, bg="#f0f3f7")
+        left_panel.pack(side="left", fill="y", padx=(0, 10))
+
+        # Toggle: manual vs CSV
+        toggle_frame = tk.Frame(left_panel, bg="#f0f3f7")
+        toggle_frame.pack(fill="x", pady=(0, 10))
+        
+        self.import_mode = tk.StringVar(value="manual")
+        tk.Radiobutton(toggle_frame, text="Manual Add", variable=self.import_mode, value="manual",
+                       bg="#f0f3f7", command=self._on_mode_change).pack(side="left", padx=5)
+        tk.Radiobutton(toggle_frame, text="Import CSVs", variable=self.import_mode, value="csv",
+                       bg="#f0f3f7", command=self._on_mode_change).pack(side="left", padx=5)
+
+        # CSV buttons (hidden until CSV mode)
+        self.csv_btn_frame = tk.Frame(left_panel, bg="#f0f3f7")
+        self.styled_button(self.csv_btn_frame, "Load Classrooms CSV", 
+                          self.load_classrooms_csv, color="#28a745").pack(side="left", padx=2)
+        self.styled_button(self.csv_btn_frame, "Load Courses CSV", 
+                          self.load_courses_csv, color="#28a745").pack(side="left", padx=2)
+        self.csv_btn_frame.pack_forget()  # hide initially
+
+        # ADD COURSE form
+        form_frame = tk.LabelFrame(left_panel, text="➕ Add New Course",
                                    font=("Segoe UI", 13, "bold"),
                                    bg="#ffffff", fg="#222",
                                    padx=20, pady=10, relief="groove")
-        form_frame.place(x=10, y=10, width=420, height=520)
+        form_frame.pack(fill="x", pady=(0, 10))
 
         labels = ["Course Code", "Course Name", "Faculty", "Class Room",
                   "Lecture Hours", "Tutorial Hours", "Lab Hours"]
         self.entries = {}
         for i, lbl in enumerate(labels):
-            tk.Label(form_frame, text=lbl, font=("Segoe UI", 10, "bold"),
-                     bg="#ffffff", fg="#444").grid(row=i, column=0, sticky="e", padx=8, pady=6)
-            entry = tk.Entry(form_frame, font=("Segoe UI", 10), width=28,
+            row_frame = tk.Frame(form_frame, bg="#ffffff")
+            row_frame.pack(fill="x", pady=5)
+            
+            tk.Label(row_frame, text=lbl, font=("Segoe UI", 10, "bold"),
+                     bg="#ffffff", fg="#444", width=15, anchor="e").pack(side="left", padx=(0, 10))
+            entry = tk.Entry(row_frame, font=("Segoe UI", 10), width=25,
                              relief="solid", bd=1, bg="#f9f9f9")
-            entry.grid(row=i, column=1, pady=6, padx=5)
+            entry.pack(side="left", fill="x", expand=True)
             self.entries[lbl] = entry
 
-        lab_row = labels.index("Lab Hours")
-        tk.Label(form_frame, text="Lab Room", font=("Segoe UI", 10, "bold"),
-                 bg="#ffffff", fg="#444").grid(row=lab_row+1, column=0, sticky="e", padx=8, pady=6)
-        lab_entry = tk.Entry(form_frame, font=("Segoe UI", 10), width=28,
+        # Lab Room
+        lab_row_frame = tk.Frame(form_frame, bg="#ffffff")
+        lab_row_frame.pack(fill="x", pady=5)
+        tk.Label(lab_row_frame, text="Lab Room", font=("Segoe UI", 10, "bold"),
+                 bg="#ffffff", fg="#444", width=15, anchor="e").pack(side="left", padx=(0, 10))
+        lab_entry = tk.Entry(lab_row_frame, font=("Segoe UI", 10), width=25,
                              relief="solid", bd=1, bg="#f9f9f9")
-        lab_entry.grid(row=lab_row+1, column=1, pady=6, padx=5)
+        lab_entry.pack(side="left", fill="x", expand=True)
         self.entries["Lab Room"] = lab_entry
 
-        base_row = lab_row + 2
-        tk.Label(form_frame, text="Branch", font=("Segoe UI", 10, "bold"),
-                 bg="#ffffff").grid(row=base_row, column=0, sticky="e", padx=8, pady=6)
+        # Branch, Semester, Type
+        combo_frame = tk.Frame(form_frame, bg="#ffffff")
+        combo_frame.pack(fill="x", pady=5)
+        
+        # Branch
+        branch_frame = tk.Frame(combo_frame, bg="#ffffff")
+        branch_frame.pack(fill="x", pady=2)
+        tk.Label(branch_frame, text="Branch", font=("Segoe UI", 10, "bold"),
+                 bg="#ffffff", width=15, anchor="e").pack(side="left", padx=(0, 10))
         self.branch_var = tk.StringVar()
-        branch_cb = ttk.Combobox(form_frame, textvariable=self.branch_var,
-                                 values=["CSE", "DSAI", "ECE"], state="readonly", width=25)
-        branch_cb.grid(row=base_row, column=1, pady=6)
+        branch_cb = ttk.Combobox(branch_frame, textvariable=self.branch_var,
+                                 values=["CSE-A", "CSE-B", "CSE", "DSAI", "ECE", "ALL"], 
+                                 state="readonly", width=23)
+        branch_cb.pack(side="left", fill="x", expand=True)
         branch_cb.current(0)
 
-        tk.Label(form_frame, text="Semester", font=("Segoe UI", 10, "bold"),
-                 bg="#ffffff").grid(row=base_row+1, column=0, sticky="e", padx=8, pady=6)
+        # Semester
+        sem_frame = tk.Frame(combo_frame, bg="#ffffff")
+        sem_frame.pack(fill="x", pady=2)
+        tk.Label(sem_frame, text="Semester", font=("Segoe UI", 10, "bold"),
+                 bg="#ffffff", width=15, anchor="e").pack(side="left", padx=(0, 10))
         self.sem_var = tk.StringVar()
-        sem_cb = ttk.Combobox(form_frame, textvariable=self.sem_var,
-                              values=[str(i) for i in range(1, 9)], state="readonly", width=25)
-        sem_cb.grid(row=base_row+1, column=1, pady=6)
+        sem_cb = ttk.Combobox(sem_frame, textvariable=self.sem_var,
+                              values=[str(i) for i in range(1, 9)], state="readonly", width=23)
+        sem_cb.pack(side="left", fill="x", expand=True)
         sem_cb.current(0)
 
-        # --- Buttons ---
-        btn_frame = tk.Frame(container, bg="#f0f3f7")
-        btn_frame.place(x=10, y=540, width=420)
-        self.styled_button(btn_frame, "➕ Add Course", self.add_course).grid(row=0, column=0, padx=10, pady=10)
-        self.styled_button(btn_frame, "⚡ Generate All", self.generate_all, color="#28a745").grid(row=0, column=1, padx=10, pady=10)
-        self.styled_button(btn_frame, "📖 Show Timetable", self.show_timetable, color="#6f42c1").grid(row=1, column=0, padx=10, pady=10)
-        self.styled_button(btn_frame, "📤 Export CSV", self.export_csv, color="#e83e8c").grid(row=1, column=1, padx=10, pady=10)
+        # Course Type
+        type_frame = tk.Frame(combo_frame, bg="#ffffff")
+        type_frame.pack(fill="x", pady=2)
+        tk.Label(type_frame, text="Course Type", font=("Segoe UI", 10, "bold"),
+                 bg="#ffffff", width=15, anchor="e").pack(side="left", padx=(0, 10))
+        self.type_var = tk.StringVar(value="core")
+        type_cb = ttk.Combobox(type_frame, textvariable=self.type_var,
+                               values=["core", "elective", "minor"], state="readonly", width=23)
+        type_cb.pack(side="left", fill="x", expand=True)
 
-        # ===== TIMETABLE VIEWER =====
-        table_frame = tk.LabelFrame(container, text="📊 Timetable Viewer",
+        # Action Buttons
+        btn_frame = tk.Frame(left_panel, bg="#f0f3f7")
+        btn_frame.pack(fill="x", pady=10)
+        
+        self.styled_button(btn_frame, "➕ Add Course", self.add_course).pack(fill="x", pady=2)
+        self.styled_button(btn_frame, "⚡ Generate Timetable", self.generate_all, color="#28a745").pack(fill="x", pady=2)
+        self.styled_button(btn_frame, "📖 Show Timetable", self.show_timetable, color="#6f42c1").pack(fill="x", pady=2)
+        self.styled_button(btn_frame, "📤 Export CSV", self.export_csv, color="#e83e8c").pack(fill="x", pady=2)
+
+        # Edit/Remove Section
+        edit_frame = tk.LabelFrame(left_panel, text="🛠 Edit / Remove Courses",
+                                   font=("Segoe UI", 13, "bold"), bg="#ffffff", fg="#222",
+                                   padx=20, pady=10, relief="groove")
+        edit_frame.pack(fill="x", pady=(10, 0))
+
+        # Branch selection for edit
+        edit_branch_frame = tk.Frame(edit_frame, bg="#ffffff")
+        edit_branch_frame.pack(fill="x", pady=5)
+        tk.Label(edit_branch_frame, text="Branch:", font=("Segoe UI", 10, "bold"), 
+                 bg="#ffffff", width=10, anchor="e").pack(side="left", padx=(0, 10))
+        self.edit_branch_var = tk.StringVar()
+        self.edit_branch_cb = ttk.Combobox(edit_branch_frame, textvariable=self.edit_branch_var,
+                                      values=["CSE-A", "CSE-B", "CSE", "DSAI", "ECE"], 
+                                      state="readonly", width=15)
+        self.edit_branch_cb.pack(side="left", fill="x", expand=True)
+        self.edit_branch_cb.current(0)
+
+        # Semester selection for edit
+        edit_sem_frame = tk.Frame(edit_frame, bg="#ffffff")
+        edit_sem_frame.pack(fill="x", pady=5)
+        tk.Label(edit_sem_frame, text="Semester:", font=("Segoe UI", 10, "bold"), 
+                 bg="#ffffff", width=10, anchor="e").pack(side="left", padx=(0, 10))
+        self.edit_sem_var = tk.StringVar()
+        self.edit_sem_cb = ttk.Combobox(edit_sem_frame, textvariable=self.edit_sem_var,
+                                   values=[str(i) for i in range(1, 9)], state="readonly", width=15)
+        self.edit_sem_cb.pack(side="left", fill="x", expand=True)
+        self.edit_sem_cb.current(0)
+
+        # Course selection for edit
+        edit_course_frame = tk.Frame(edit_frame, bg="#ffffff")
+        edit_course_frame.pack(fill="x", pady=5)
+        tk.Label(edit_course_frame, text="Course:", font=("Segoe UI", 10, "bold"), 
+                 bg="#ffffff", width=10, anchor="e").pack(side="left", padx=(0, 10))
+        self.edit_course_var = tk.StringVar()
+        self.course_cb = ttk.Combobox(edit_course_frame, textvariable=self.edit_course_var, 
+                                     state="readonly", width=15)
+        self.course_cb.pack(side="left", fill="x", expand=True)
+
+        # Edit action buttons
+        edit_btn_frame = tk.Frame(edit_frame, bg="#ffffff")
+        edit_btn_frame.pack(fill="x", pady=10)
+        
+        self.styled_button(edit_btn_frame, "🔃 Refresh List", self.refresh_course_list, color="#6c757d").pack(side="left", fill="x", expand=True, padx=2)
+        self.styled_button(edit_btn_frame, "🔄 Load Course", self.load_course_for_edit, color="#17a2b8").pack(side="left", fill="x", expand=True, padx=2)
+        
+        edit_btn_frame2 = tk.Frame(edit_frame, bg="#ffffff")
+        edit_btn_frame2.pack(fill="x", pady=5)
+        self.styled_button(edit_btn_frame2, "💾 Save Changes", self.save_course_edit, color="#007bff").pack(side="left", fill="x", expand=True, padx=2)
+        self.styled_button(edit_btn_frame2, "❌ Remove Course", self.remove_course, color="#dc3545").pack(side="left", fill="x", expand=True, padx=2)
+
+        # Right panel - Timetable viewer
+        right_panel = tk.Frame(content_frame, bg="#f0f3f7")
+        right_panel.pack(side="left", fill="both", expand=True)
+
+        # Timetable viewer
+        table_frame = tk.LabelFrame(right_panel, text="📊 Timetable Viewer",
                                     font=("Segoe UI", 13, "bold"),
                                     bg="#ffffff", fg="#222",
                                     relief="groove")
-        table_frame.place(x=450, y=10, width=760, height=700)
+        table_frame.pack(fill="both", expand=True)
 
+        # Filter frame
         filter_frame = tk.Frame(table_frame, bg="#ffffff")
-        filter_frame.pack(fill="x", pady=5)
+        filter_frame.pack(fill="x", padx=10, pady=10)
 
-        tk.Label(filter_frame, text="Branch:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=0, padx=5)
+        tk.Label(filter_frame, text="Branch:", font=("Segoe UI", 10, "bold"), bg="#ffffff").pack(side="left", padx=5)
         self.display_branch = tk.StringVar()
-        display_branch_cb = ttk.Combobox(filter_frame, textvariable=self.display_branch,
-                                         values=["CSE", "DSAI", "ECE"], state="readonly", width=12)
-        display_branch_cb.grid(row=0, column=1, padx=5)
-        display_branch_cb.current(0)
+        self.display_branch_cb = ttk.Combobox(filter_frame, textvariable=self.display_branch,
+                                         values=["CSE-A", "CSE-B", "CSE", "DSAI", "ECE"], 
+                                         state="readonly", width=12)
+        self.display_branch_cb.pack(side="left", padx=5)
+        self.display_branch_cb.current(0)
 
-        tk.Label(filter_frame, text="Semester:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=2, padx=5)
+        tk.Label(filter_frame, text="Semester:", font=("Segoe UI", 10, "bold"), bg="#ffffff").pack(side="left", padx=5)
         self.display_sem = tk.StringVar()
-        display_sem_cb = ttk.Combobox(filter_frame, textvariable=self.display_sem,
+        self.display_sem_cb = ttk.Combobox(filter_frame, textvariable=self.display_sem,
                                       values=[str(i) for i in range(1, 9)], state="readonly", width=12)
-        display_sem_cb.grid(row=0, column=3, padx=5)
-        display_sem_cb.current(0)
+        self.display_sem_cb.pack(side="left", padx=5)
+        self.display_sem_cb.current(0)
 
+        # Treeview with scrollbars
         tree_container = tk.Frame(table_frame)
         tree_container.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.tree = ttk.Treeview(tree_container,
                                  columns=("Day", "Slot", "Code", "Course", "Faculty", "Type", "Room"),
                                  show="headings")
-        for col in self.tree["columns"]:
+        
+        # Configure columns
+        columns = {
+            "Day": 80, "Slot": 120, "Code": 100, 
+            "Course": 200, "Faculty": 150, "Type": 80, "Room": 80
+        }
+        for col, width in columns.items():
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=100, anchor="center")
+            self.tree.column(col, width=width, anchor="center")
 
-        h_scroll = tk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
-        v_scroll = tk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
-        self.tree.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
-        v_scroll.pack(side="right", fill="y")
-        h_scroll.pack(side="bottom", fill="x")
-        self.tree.pack(fill="both", expand=True)
+        # Scrollbars
+        v_scroll = ttk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
+        h_scroll = ttk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+
+        # Grid layout for tree and scrollbars
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        v_scroll.grid(row=0, column=1, sticky="ns")
+        h_scroll.grid(row=1, column=0, sticky="ew")
+        
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
+        
+        # Configure tag colors including combined courses
         self.tree.tag_configure('oddrow', background="#f9f9f9")
         self.tree.tag_configure('evenrow', background="#eef6ff")
+        self.tree.tag_configure('combined', background="#e8f5e8")  # Light green for combined courses
 
-        # ===== EDIT / REMOVE =====
-        edit_frame = tk.LabelFrame(container, text="🛠 Edit / Remove Courses",
-                                   font=("Segoe UI", 13, "bold"), bg="#ffffff", fg="#222",
-                                   padx=20, pady=10, relief="groove")
-        edit_frame.place(x=1220, y=10, width=400, height=700)
+    def setup_exam_tab(self):
+        """Setup exam scheduling tab."""
+        exam_frame = ttk.Frame(self.notebook)
+        self.notebook.add(exam_frame, text="📝 Exam Scheduling")
+        
+        # Create scrollable container
+        container = self.create_scrollable_frame(exam_frame)
+        
+        # Title
+        title_frame = tk.Frame(container, bg="#dc3545", height=70)
+        title_frame.pack(fill="x", pady=(0, 15))
+        tk.Label(title_frame, text="📝 Automatic Exam Scheduler",
+                 font=("Segoe UI", 22, "bold"), bg="#dc3545", fg="white").pack(pady=15)
 
-        tk.Label(edit_frame, text="Branch:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.edit_branch_var = tk.StringVar()
-        edit_branch_cb = ttk.Combobox(edit_frame, textvariable=self.edit_branch_var,
-                                      values=["CSE", "DSAI", "ECE"], state="readonly", width=18)
-        edit_branch_cb.grid(row=1, column=0, padx=5, pady=5)
-        edit_branch_cb.current(0)
+        # Content frame
+        content_frame = tk.Frame(container, bg="#f0f3f7")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Controls frame
+        control_frame = tk.Frame(content_frame, bg="#f0f3f7")
+        control_frame.pack(fill="x", pady=10)
+        
+        self.styled_button(control_frame, "🎯 Generate Exam Schedule", 
+                          self.generate_exam_schedule, color="#dc3545").pack(side="left", padx=5)
+        self.styled_button(control_frame, "📤 Export Exam CSV", 
+                          self.export_exam_csv, color="#e83e8c").pack(side="left", padx=5)
+        
+        # Info frame
+        info_frame = tk.LabelFrame(content_frame, text="ℹ️ Exam Information",
+                                  font=("Segoe UI", 12, "bold"), bg="#ffffff",
+                                  padx=10, pady=10)
+        info_frame.pack(fill="x", pady=10)
+        
+        info_text = """• Exam slots: 9:00-12:00, 14:00-17:00, 18:00-21:00
+• No two exams for same branch/semester at same time
+• Room capacity constraints enforced
+• Labs typically not included in theory exams"""
+        
+        tk.Label(info_frame, text=info_text, font=("Segoe UI", 10), 
+                 bg="#ffffff", justify="left", anchor="w").pack(fill="x")
+        
+        # Exam schedule display
+        table_frame = tk.LabelFrame(content_frame, text="📊 Exam Schedule",
+                                   font=("Segoe UI", 13, "bold"), bg="#ffffff",
+                                   relief="groove")
+        table_frame.pack(fill="both", expand=True, pady=10)
 
-        tk.Label(edit_frame, text="Semester:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.edit_sem_var = tk.StringVar()
-        edit_sem_cb = ttk.Combobox(edit_frame, textvariable=self.edit_sem_var,
-                                   values=[str(i) for i in range(1, 9)], state="readonly", width=18)
-        edit_sem_cb.grid(row=3, column=0, padx=5, pady=5)
-        edit_sem_cb.current(0)
+        tree_container = tk.Frame(table_frame)
+        tree_container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.exam_tree = ttk.Treeview(tree_container,
+                                 columns=("Day", "Time Slot", "Course Code", "Course Name", 
+                                         "Branch", "Semester", "Room"),
+                                 show="headings")
+        
+        columns = {
+            "Day": 80, "Time Slot": 120, "Course Code": 120, 
+            "Course Name": 200, "Branch": 80, "Semester": 80, "Room": 100
+        }
+        
+        for col, width in columns.items():
+            self.exam_tree.heading(col, text=col)
+            self.exam_tree.column(col, width=width, anchor="center")
+        
+        v_scroll = ttk.Scrollbar(tree_container, orient="vertical", command=self.exam_tree.yview)
+        h_scroll = ttk.Scrollbar(tree_container, orient="horizontal", command=self.exam_tree.xview)
+        self.exam_tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        
+        # Grid layout
+        self.exam_tree.grid(row=0, column=0, sticky="nsew")
+        v_scroll.grid(row=0, column=1, sticky="ns")
+        h_scroll.grid(row=1, column=0, sticky="ew")
+        
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
+        
+        self.exam_tree.tag_configure('oddrow', background="#f9f9f9")
+        self.exam_tree.tag_configure('evenrow', background="#fff0f0")
 
-        tk.Label(edit_frame, text="Course Code:", font=("Segoe UI", 10, "bold"), bg="#ffffff").grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        self.edit_course_var = tk.StringVar()
-        self.course_cb = ttk.Combobox(edit_frame, textvariable=self.edit_course_var, state="readonly", width=18)
-        self.course_cb.grid(row=5, column=0, padx=5, pady=5)
-        self.styled_button(edit_frame, "💾 Save", self.save_course_edit, color="#007bff").grid(row=7, column=0, padx=5, pady=5, sticky="ew")
-        self.styled_button(edit_frame, "❌ Remove", self.remove_course, color="#dc3545").grid(row=7, column=1, padx=5, pady=5, sticky="ew")
-        self.styled_button(edit_frame, "🔃 Refresh", self.refresh_course_list, color="#6c757d").grid(row=8, column=0, padx=5, pady=5, sticky="ew")
-        self.styled_button(edit_frame, "🔄 Load", self.load_course_for_edit, color="#17a2b8").grid(row=8, column=1, padx=5, pady=5, sticky="ew")
+    # --- UI helpers ---
+    def _on_mode_change(self):
+        mode = self.import_mode.get()
+        if mode == "csv":
+            self.csv_btn_frame.pack(fill="x", pady=5)
+        else:
+            self.csv_btn_frame.pack_forget()
 
+    def load_classrooms_csv(self):
+        path = filedialog.askopenfilename(title="Select Classrooms CSV", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not path:
+            return
+        classrooms = load_classrooms(path)
+        if classrooms:
+            self.classrooms = classrooms
+            messagebox.showinfo("Loaded", f"✅ Loaded {len(classrooms)} classrooms.")
+        else:
+            messagebox.showwarning("No Data", "⚠ No classrooms loaded.")
 
+    def load_courses_csv(self):
+        path = filedialog.askopenfilename(title="Select Courses CSV", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not path:
+            return
 
-    # === LOGIC ===
+        normalized, courses_dict = load_courses(path)
+        if normalized:
+            self.courses = courses_dict
+            # Update branch comboboxes
+            branches = list(courses_dict.keys())
+            self.display_branch_cb['values'] = branches
+            self.edit_branch_cb['values'] = branches
+            if branches:
+                self.display_branch_cb.current(0)
+                self.edit_branch_cb.current(0)
+            messagebox.showinfo("Success", f"✅ Loaded {len(normalized)} course entries")
+        else:
+            messagebox.showwarning("No Data", "⚠ No courses loaded.")
+
     def add_course(self):
         try:
             code = self.entries["Course Code"].get().strip()
@@ -191,25 +437,28 @@ class TimetableApp:
             lab = int(self.entries["Lab Hours"].get().strip() or 0)
             branch = self.branch_var.get()
             sem = self.sem_var.get()
+            course_type = self.type_var.get()
 
-            if not all([code, name, faculty, class_room, branch, sem]):
-                raise ValueError("Empty fields detected. Class Room is required.")
+            if not all([code, name, faculty, branch, sem]):
+                raise ValueError("Empty required fields detected.")
             if lab > 0 and not lab_room:
                 raise ValueError("Lab room required for non-zero Lab Hours")
-
-            # ===== DYNAMIC ROOM LOGIC =====
-            room = lab_room if lab > 0 else class_room
 
             self.courses.setdefault(branch, {}).setdefault(sem, {})
             self.courses[branch][sem][code] = {
                 "name": name, "faculty": faculty,
                 "class_room": class_room, "lab_room": lab_room,
                 "lecture_hours": lec, "tutorial_hours": tut, "lab_hours": lab,
-                "room": room
+                "students": 0,  # manual add doesn't have students field
+                "type": course_type
             }
-            messagebox.showinfo("Success", f"✅ Added {name} ({lec}/{tut}/{lab}) hrs/week for {branch} Sem-{sem}")
+            messagebox.showinfo("Success", f"✅ Added {name} for {branch} Sem-{sem}")
+            
+            # Clear form
             for e in self.entries.values():
                 e.delete(0, tk.END)
+            self.refresh_course_list()
+            
         except Exception as e:
             messagebox.showerror("Error", f"❌ Invalid input: {e}")
 
@@ -224,7 +473,6 @@ class TimetableApp:
         else:
             self.course_cb['values'] = []
             self.edit_course_var.set("")
-            messagebox.showinfo("No Courses", "⚠ No courses found for selected Branch & Semester")
 
     def load_course_for_edit(self):
         branch = self.edit_branch_var.get()
@@ -238,22 +486,38 @@ class TimetableApp:
             for key, entry in self.entries.items():
                 entry.delete(0, tk.END)
             self.entries["Course Code"].insert(0, code)
-            self.entries["Course Name"].insert(0, data["name"])
-            self.entries["Faculty"].insert(0, data["faculty"])
-            self.entries["Class Room"].insert(0, data["class_room"])
+            self.entries["Course Name"].insert(0, data.get("name", ""))
+            self.entries["Faculty"].insert(0, data.get("faculty", ""))
+            self.entries["Class Room"].insert(0, data.get("class_room", ""))
             self.entries["Lab Room"].insert(0, data.get("lab_room", ""))
-            self.entries["Lecture Hours"].insert(0, data["lecture_hours"])
-            self.entries["Tutorial Hours"].insert(0, data["tutorial_hours"])
-            self.entries["Lab Hours"].insert(0, data["lab_hours"])
+            self.entries["Lecture Hours"].insert(0, data.get("lecture_hours", 0))
+            self.entries["Tutorial Hours"].insert(0, data.get("tutorial_hours", 0))
+            self.entries["Lab Hours"].insert(0, data.get("lab_hours", 0))
             self.branch_var.set(branch)
             self.sem_var.set(sem)
+            self.type_var.set(data.get("type", "core"))
             messagebox.showinfo("Loaded", f"✅ Course {code} loaded for editing.")
         except Exception as e:
             messagebox.showerror("Error", f"❌ Could not load course: {e}")
 
     def save_course_edit(self):
         try:
+            # Get the original code before potentially changing it
+            original_code = self.edit_course_var.get()
+            original_branch = self.edit_branch_var.get()
+            original_sem = self.edit_sem_var.get()
+            
+            # Use add_course logic which will overwrite
             self.add_course()
+            
+            # If code was changed, remove the old entry
+            new_code = self.entries["Course Code"].get().strip()
+            if (original_code != new_code and 
+                original_branch in self.courses and 
+                original_sem in self.courses[original_branch] and
+                original_code in self.courses[original_branch][original_sem]):
+                del self.courses[original_branch][original_sem][original_code]
+                
             messagebox.showinfo("Saved", "✅ Course changes saved successfully!")
             self.refresh_course_list()
         except Exception as e:
@@ -280,20 +544,36 @@ class TimetableApp:
         except Exception as e:
             messagebox.showerror("Error", f"❌ {e}")
 
-    # === TIMETABLE ===
+    # TIMETABLE generation and viewing
     def generate_all(self):
-        scheduler = TimetableScheduler(self.courses)
+        if not self.courses:
+            messagebox.showwarning("Warning", "Please add courses first (manually or via CSV)")
+            return
+            
+        scheduler = TimetableScheduler(self.courses, classrooms=self.classrooms)
         self.timetable, unscheduled = scheduler.generate_timetable(notify=False)
+        
         if self.timetable:
-            b = next(iter(self.timetable))
-            s = next(iter(self.timetable[b]))
-            self.display_branch.set(b)
-            self.display_sem.set(s)
+            branches = list(self.timetable.keys())
+            self.display_branch_cb['values'] = branches
+            if branches:
+                self.display_branch.set(branches[0])
+                sems = list(self.timetable[branches[0]].keys())
+                if sems:
+                    self.display_sem.set(sems[0])
+        
         if unscheduled:
             warn_list = "\n".join([f"{b} Sem-{s}: {c} ({t})" for b, s, c, t in unscheduled])
-            messagebox.showwarning("Unscheduled Courses", f"⚠ Some couldn’t be scheduled:\n\n{warn_list}")
+            messagebox.showwarning("Unscheduled Courses", f"⚠ Some couldn't be scheduled:\n\n{warn_list}")
         else:
-            messagebox.showinfo("Done", "✅ All timetables generated successfully!")
+            branches = list(self.timetable.keys())
+            branch_info = ", ".join(branches)
+            messagebox.showinfo(
+                "Success", 
+                f"✅ All timetables generated successfully!\n"
+                f"Branches: {branch_info}\n"
+                f"Total timetables: {sum(len(sems) for sems in self.timetable.values())}"
+            )
 
     def show_timetable(self):
         self.tree.delete(*self.tree.get_children())
@@ -302,27 +582,91 @@ class TimetableApp:
         if not branch or not sem:
             messagebox.showwarning("Select", "⚠ Please select Branch and Semester first")
             return
+
         if branch in self.timetable and sem in self.timetable[branch]:
-            sorted_items = sorted(
-                self.timetable[branch][sem].items(),
-                key=lambda kv: (DAYS.index(kv[0][0]), kv[0][1])
-            )
+            table = self.timetable[branch][sem]
+            
+            # Sort by day and time slot
+            sorted_items = sorted(table.items(), key=lambda kv: (DAYS.index(kv[0][0]), kv[0][1]))
+            
             for idx, ((day, slot), (code, name, faculty, ctype, room)) in enumerate(sorted_items):
                 tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
+                
+                # NEW: Highlight combined courses for CSE sections
+                if branch in ["CSE-A", "CSE-B"] and self._is_combined_course(branch, sem, code):
+                    tag = 'combined'
+                
                 self.tree.insert("", "end",
                                  values=(day, slot, code, name, faculty, ctype, room),
                                  tags=(tag,))
-            for col in self.tree["columns"]:
-                max_width = max([len(str(self.tree.set(k, col))) for k in self.tree.get_children()] + [len(col)])
-                self.tree.column(col, width=max(100, min(max_width*10, 400)))
+            
+            # Auto-resize columns
+            self._auto_resize_columns()
         else:
             messagebox.showwarning("Not Found", "⚠ No timetable found for this Branch & Semester")
 
-    def export_csv(self):
-        export_to_csv(self.timetable)
-        messagebox.showinfo("Exported", "✅ All timetables exported to CSV successfully!")
+    def _is_combined_course(self, branch, sem, code):
+        """Check if a course is combined between CSE-A and CSE-B."""
+        if branch not in ["CSE-A", "CSE-B"]:
+            return False
+        
+        other_branch = "CSE-B" if branch == "CSE-A" else "CSE-A"
+        
+        # Check if course exists in both branches at the same time
+        if (branch in self.timetable and sem in self.timetable[branch] and
+            other_branch in self.timetable and sem in self.timetable[other_branch]):
+            
+            # Get all slots for this course in current branch
+            current_slots = [slot for slot, (c_code, _, _, _, _) in self.timetable[branch][sem].items() 
+                            if c_code == code]
+            
+            # Check if any slot exists in other branch for same course
+            for slot in current_slots:
+                if (slot in self.timetable[other_branch][sem] and 
+                    self.timetable[other_branch][sem][slot][0] == code):
+                    return True
+        
+        return False
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = TimetableApp(root)
-    root.mainloop()
+    def _auto_resize_columns(self):
+        """Auto-resize treeview columns to fit content."""
+        for col in self.tree["columns"]:
+            max_width = max(
+                [len(str(self.tree.heading(col)['text']))] +
+                [len(str(self.tree.set(k, col))) for k in self.tree.get_children()]
+            )
+            self.tree.column(col, width=min(max_width * 10, 300))
+
+    def export_csv(self):
+        if not self.timetable:
+            messagebox.showwarning("Warning", "Please generate timetable first")
+            return
+        result = export_to_csv(self.timetable)
+        messagebox.showinfo("Exported", result)
+
+    def generate_exam_schedule(self):
+        if not self.courses:
+            messagebox.showwarning("Warning", "Please load courses first")
+            return
+            
+        exam_scheduler = ExamScheduler(self.courses, self.classrooms)
+        self.exam_schedule = exam_scheduler.generate_exam_schedule()
+        
+        # Display in treeview
+        self.exam_tree.delete(*self.exam_tree.get_children())
+        for idx, exam in enumerate(self.exam_schedule):
+            tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
+            self.exam_tree.insert("", "end", values=(
+                exam['day'], exam['slot'], exam['code'], exam['name'],
+                exam['branch'], exam['semester'], exam['room']
+            ), tags=(tag,))
+        
+        messagebox.showinfo("Success", f"Generated exam schedule with {len(self.exam_schedule)} exams")
+
+    def export_exam_csv(self):
+        if not hasattr(self, 'exam_schedule') or not self.exam_schedule:
+            messagebox.showwarning("Warning", "No exam schedule to export")
+            return
+            
+        result = export_exam_schedule(self.exam_schedule)
+        messagebox.showinfo("Exported", result)
